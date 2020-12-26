@@ -4,6 +4,9 @@ from torch import nn
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 
+def exists(val):
+    return val is not None
+
 def top_p(logits, thres = 0.9):
     sorted_logits, sorted_indices = torch.sort(logits, descending=True)
     cum_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
@@ -23,7 +26,7 @@ def top_k(logits, thres = 0.9):
     return probs
 
 class AutoregressiveWrapper(nn.Module):
-    def __init__(self, net, ignore_index = -100, pad_value = 0):
+    def __init__(self, net, ignore_index = 0, pad_value = 0):
         super().__init__()
         self.pad_value = pad_value
         self.ignore_index = ignore_index
@@ -43,16 +46,24 @@ class AutoregressiveWrapper(nn.Module):
 
         self.net.eval()
         out = start_tokens
-        input_mask = kwargs.pop('input_mask', None)
+        input_mask = kwargs.pop('mask', None)
 
         if input_mask is None:
             input_mask = torch.full_like(out, True, dtype=torch.bool, device=out.device)
+        
+        # in case of conditional generation, if enc_mask is not provided use the correct context_mask
+        context_mask = kwargs.pop('context_mask', None)
+
+        if 'context' in kwargs and not exists(context_mask):
+            context = kwargs['context']
+            context_mask = torch.full(context.shape[:2], True, dtype=torch.bool, device=out.device)
+
+        kwargs.update(context_mask = context_mask)
 
         for _ in range(seq_len):
             x = out[:, -self.max_seq_len:]
             input_mask = input_mask[:, -self.max_seq_len:]
-
-            logits = self.net(x, input_mask=input_mask, **kwargs)[:, -1, :]
+            logits = self.net(x, mask=input_mask, **kwargs)[:, -1, :]
             filtered_logits = filter_logits_fn(logits, thres = filter_thres)
             probs = F.softmax(filtered_logits / temperature, dim=-1)
             sample = torch.multinomial(probs, 1)
@@ -71,27 +82,16 @@ class AutoregressiveWrapper(nn.Module):
         self.net.train(was_training)
         return out
 
-    def forward(self, x, return_loss = False, **kwargs):
-        pad = partial(pad_sequence, batch_first = True, padding_value = self.pad_value)
+    def forward(self, x, **kwargs):
+        xi = x[:, :-1]
+        xo = x[:, 1:]
 
-        if not return_loss:
-            if not isinstance(x, torch.Tensor):
-                x = pad(x)
-            return self.net(x, **kwargs)
-
-        if isinstance(x, torch.Tensor):
-            xi = x[:, :-1]
-            xo = x[:, 1:]
-
-            # help auto-solve an area of confusion around input masks in auto-regressive
-            # if user supplies a mask that is only off by one from the source sequence, resolve it for them
-            mask = kwargs.pop('input_mask', None)
-            if mask is not None and mask.shape[1] == x.shape[1]:
-                mask = mask[:, :-1]
-                kwargs.update(input_mask = mask)
-        else:
-            xi = pad(list(map(lambda t: t[:-1], x)))
-            xo = pad(list(map(lambda t: t[1:], x)))
+        # help auto-solve an area of confusion around input masks in auto-regressive
+        # if user supplies a mask that is only off by one from the source sequence, resolve it for them
+        mask = kwargs.pop('mask', None)
+        if mask is not None and mask.shape[1] == x.shape[1]:
+            mask = mask[:, :-1]
+        kwargs.update(mask = mask)
 
         out = self.net(xi, **kwargs)
 
