@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "relative_performer"
+version = "0.1.0"
+description = ""
+authors = []
+
+[tool.poetry.dependencies]
+python = "^3.7"
+local-attention = ">=1.1.1"
+einops = ">=0.3"
+pytorch-fast-transformers = ">=0.3.0"
+torch = ">=1.6"
+matplotlib = "^3.3.3"
+seaborn = "^0.11.1"
+
+[tool.poetry.dev-dependencies]
+notebook = "^6.1.6"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
