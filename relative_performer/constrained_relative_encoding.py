@@ -1,12 +1,39 @@
 """Relative positional attention using constrained projections."""
 import math
+from functools import partial
 import torch
 import torch.nn as nn
 import torch.nn.init as init
 import torch.nn.functional as F
 from einops import rearrange, repeat
 from relative_performer.performer_pytorch import (
-    default, exists, empty, FastAttention)
+    default, exists, FastAttention, PreLayerNorm, ReZero, PreScaleNorm, Chunk,
+    FeedForward, get_module_device, find_modules)
+from relative_performer.reversible import ReversibleSequence, SequentialSequence
+
+
+class LearnableSinusoidEncoding(nn.Module):
+    """Layer converts scalar input to Sinusoid Encoding with learnt scaling."""
+
+    def __init__(self, dim, max_timescale_init=10000):
+        """Initialize layer.
+
+        Args:
+            dim: Dimensionality of the sinusoid encoding, should be dividable
+                by 2.
+            max_timescale_init: Maximum time scale used during initialization.
+        """
+        super().__init__()
+        assert dim % 2 == 0
+        inv_freq = 1. / (
+            max_timescale_init ** (torch.arange(0, dim, 2).float() / dim))
+        self.inv_freq = nn.Parameter(inv_freq, requires_grad=True)
+
+    def forward(self, x):
+        sinusoid_inp = torch.matmul(
+            x[..., None], self.inv_freq[None, :])
+        emb = torch.cat((sinusoid_inp.sin(), sinusoid_inp.cos()), dim=-1)
+        return emb
 
 
 class ConstrainedLinear(nn.Module):
