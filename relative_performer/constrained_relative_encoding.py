@@ -242,7 +242,6 @@ class RelPosSelfAttention(nn.Module):
 class RelativePerformer(nn.Module):
     def __init__(self, dim, depth, heads, pos_dims=1, pos_scales=4, causal = False, ff_mult = 4, nb_features = None, feature_redraw_interval = 1000, reversible = False, ff_chunks = 1, generalized_attention = False, kernel_fn = nn.ReLU(), qr_uniform_q = False, use_scalenorm = False, use_rezero = False, ff_glu = False, ff_dropout = 0., attn_dropout = 0., cross_attend = False, no_projection = False):
         super().__init__()
-        self.positional_encoding = LearnableSinusoidEncoding(pos_scales*2)
         layers = nn.ModuleList([])
 
         if use_scalenorm:
@@ -307,14 +306,17 @@ class RelativePerformer(nn.Module):
 
     def forward(self, x, positions, **kwargs):
         self.check_redraw_projections()
-        pos = rearrange(
-            self.positional_encoding(positions), 'b n p d -> b n (p d)')
-        return self.net(x, pos=pos, **kwargs)
+        return self.net(x, pos=positions, **kwargs)
+
 
 if __name__ == '__main__':
     model = RelativePerformer(
         dim=512, depth=1, heads=8, pos_dims=1, pos_scales=4, causal=False
     )
     positions = torch.arange(1024, dtype=torch.float32)[None, :, None]
+    pos_embedding = rearrange(
+        LearnableSinusoidEncoding(4*2)(positions),
+        'b n p d -> b n (p d)'
+    )
     x = torch.randn(1, 1024, 512)
-    model(x, positions) # (1, 2048, 512)
+    model(x, pos_embedding)
