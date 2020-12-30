@@ -9,7 +9,7 @@ from functools import partial
 from contextlib import contextmanager
 
 # from local_attention import LocalAttention
-from performer_pytorch.reversible import ReversibleSequence, SequentialSequence
+from relative_performer.reversible import ReversibleSequence, SequentialSequence
 
 try:
     from apex import amp
@@ -328,7 +328,6 @@ class SelfAttention(nn.Module):
             if exists(context_mask):
                 global_mask = context_mask[:, None, :, None]
                 v.masked_fill_(~global_mask, 0.)
-
             out = self.fast_attention(q, k, v)
             attn_outs.append(out)
 
