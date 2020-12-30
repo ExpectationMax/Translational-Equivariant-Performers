@@ -114,7 +114,8 @@ class RelativePerformerModel(pl.LightningModule):
         logits = self(x)
         loss = self.loss(logits, y)
         self.train_acc(logits, y)
-        self.log('train_acc', self.train_acc, on_step=True, on_epoch=True)
+        self.log('train_acc', self.train_acc, on_step=True, on_epoch=True,
+                 prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
