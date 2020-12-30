@@ -116,6 +116,7 @@ class ConstrainedLinear(nn.Module):
         ], axis=0)
 
     def forward(self, input: torch.Tensor, pos_encodings: torch.Tensor):
+        bs = input.shape[0]
         content_based = F.linear(input, self.content_weight)
         content_based = rearrange(
             content_based, 'b n (h d) -> b h n d', h=self.heads)
@@ -123,7 +124,9 @@ class ConstrainedLinear(nn.Module):
         position_based = position_based.matmul(
             self._build_positional_projection_matrix())
         position_based = rearrange(position_based, 'b n h 1 d -> b h n d')
-        return torch.cat([content_based, position_based], axis=-1) + self.bias
+        return torch.cat(
+            [content_based, position_based.expand(bs, -1, -1, -1)],
+            axis=-1) + self.bias
 
 
 class IdentityLinear(nn.Module):
@@ -177,12 +180,15 @@ class IdentityLinear(nn.Module):
             init.uniform_(self.bias, -bound, bound)
 
     def forward(self, input: torch.Tensor, pos_encodings: torch.Tensor):
+        bs = input.shape[0]
         content_based = F.linear(input, self.content_weight)
         content_based = rearrange(
             content_based, 'b n (h d) -> b h n d', h=self.heads)
         position_based = repeat(
             pos_encodings, 'b n d -> b h n d', h=self.heads)
-        return torch.cat([content_based, position_based], axis=-1) + self.bias
+        return torch.cat(
+            [content_based, position_based.expand(bs, -1, -1, -1)
+             ], axis=-1) + self.bias
 
 
 class RelPosSelfAttention(nn.Module):
