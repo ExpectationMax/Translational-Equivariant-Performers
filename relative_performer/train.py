@@ -151,13 +151,22 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     data_cls = getattr(datasets, args.dataset + 'DataModule')
-    dataset = data_cls(
-        DATA_PATH.joinpath(args.dataset),
-        batch_size=args.batch_size,
-        normalize=True,
-        num_workers=0
-        # shuffle=True  # TODO: Newer versions might require this to be set
-    )
+    try:
+        dataset = data_cls(
+            DATA_PATH.joinpath(args.dataset),
+            batch_size=args.batch_size,
+            normalize=True,
+            num_workers=0
+            # shuffle=True  # TODO: Newer versions might require this to be set
+        )
+    except TypeError:
+        # Some of the dataset modules don't support the normalize keyword
+        dataset = data_cls(
+            DATA_PATH.joinpath(args.dataset),
+            batch_size=args.batch_size,
+            num_workers=0
+            # shuffle=True  # TODO: Newer versions might require this to be set
+        )
     in_features, nx, ny = dataset.dims
     max_pos = max(nx, ny)
     model = RelativePerformerModel(
