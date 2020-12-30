@@ -156,7 +156,7 @@ if __name__ == '__main__':
             DATA_PATH.joinpath(args.dataset),
             batch_size=args.batch_size,
             normalize=True,
-            num_workers=0
+            num_workers=4
             # shuffle=True  # TODO: Newer versions might require this to be set
         )
     except TypeError:
@@ -164,7 +164,7 @@ if __name__ == '__main__':
         dataset = data_cls(
             DATA_PATH.joinpath(args.dataset),
             batch_size=args.batch_size,
-            num_workers=0
+            num_workers=4
             # shuffle=True  # TODO: Newer versions might require this to be set
         )
     in_features, nx, ny = dataset.dims
