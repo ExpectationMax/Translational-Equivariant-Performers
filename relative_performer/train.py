@@ -11,6 +11,7 @@ from einops import rearrange
 from relative_performer.constrained_relative_encoding import (
     RelativePerformer, LearnableSinusoidEncoding)
 
+GPU_AVAILABLE = torch.cuda.is_available() and torch.cuda.device_count() > 0
 DATA_PATH = Path(__file__).parent.parent.joinpath('data')
 
 
@@ -156,7 +157,7 @@ if __name__ == '__main__':
         dataset = data_cls(
             DATA_PATH.joinpath(args.dataset),
             normalize=True,
-            num_workers=4
+            num_workers=4,
             # shuffle=True  # TODO: Newer versions might require this to be set
         )
     except TypeError:
@@ -176,7 +177,7 @@ if __name__ == '__main__':
         num_classes=dataset.num_classes
     )
 
-    trainer = pl.Trainer()
+    trainer = pl.Trainer(gpus=-1 if GPU_AVAILABLE else None)
     trainer.fit(
         model,
         train_dataloader=dataset.train_dataloader(batch_size=args.batch_size),
