@@ -2,6 +2,7 @@
 """Train a model."""
 import argparse
 from pathlib import Path
+import os
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
@@ -14,6 +15,27 @@ from relative_performer.constrained_relative_encoding import (
 
 GPU_AVAILABLE = torch.cuda.is_available() and torch.cuda.device_count() > 0
 DATA_PATH = Path(__file__).parent.parent.joinpath('data')
+
+
+
+class TbWithMetricsLogger(pl.loggers.TensorBoardLogger):
+    def __init__(self, save_dir, initial_values, **kwargs):
+        super().__init__(save_dir, default_hp_metric=False, **kwargs)
+        self.hparams_saved = False
+        self.initial_values = initial_values
+
+    @pl.utilities.rank_zero_only
+    def log_hyperparams(self, params):
+        print('Called log hparams')
+        # Somehow hyperparameters are saved when a model is simply restored,
+        # catch that here so we don't add an incorrect value when restoring.
+        if self.hparams_saved:
+            return
+        super().log_hyperparams(
+            params,
+            self.initial_values
+        )
+        self.hparams_saved = True
 
 
 class PerfomerBase(pl.LightningModule):
@@ -34,6 +56,7 @@ class PerfomerBase(pl.LightningModule):
 
         self.train_acc = pl.metrics.Accuracy()
         self.val_acc = pl.metrics.Accuracy()
+        self.test_acc = pl.metrics.Accuracy()
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
@@ -104,9 +127,9 @@ class PerfomerBase(pl.LightningModule):
         x = x.permute(0, 2, 3, 1)
         logits = self(x)
         loss = self.loss(logits, y)
-        self.log('train_loss', loss, on_step=True, on_epoch=True)
+        self.log('train/loss', loss, on_step=True, on_epoch=True)
         self.train_acc(logits, y)
-        self.log('train_acc', self.train_acc, on_step=True, on_epoch=True,
+        self.log('train/acc', self.train_acc, on_step=True, on_epoch=True,
                  prog_bar=True)
         return loss
 
@@ -117,9 +140,21 @@ class PerfomerBase(pl.LightningModule):
         x = x.permute(0, 2, 3, 1)
         logits = self(x)
         loss = self.loss(logits, y)
-        self.log('val_loss', loss, on_step=True, on_epoch=True)
+        self.log('val/loss', loss, on_epoch=True)
         self.val_acc(logits, y)
-        self.log('val_acc', self.val_acc, on_step=True, on_epoch=True)
+        self.log('val/acc', self.val_acc, on_epoch=True)
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        x, y = batch
+        # The datasets always input in the format (C, W, H) instead of (W, H,
+        # C).
+        x = x.permute(0, 2, 3, 1)
+        logits = self(x)
+        loss = self.loss(logits, y)
+        self.log('test/loss', loss, on_epoch=True)
+        self.test_acc(logits, y)
+        self.log('test/acc', self.test_acc, on_epoch=True)
         return loss
 
 
@@ -149,7 +184,7 @@ class PerformerModel(PerfomerBase):
         out = self.performer(embedding)[:, 0]
         return self.output_layer(out)
 
-    @ staticmethod
+    @staticmethod
     def add_model_specific_args(parent_parser):
         parser = argparse.ArgumentParser(
             parents=[parent_parser], add_help=False)
@@ -270,22 +305,26 @@ if __name__ == '__main__':
                                           'NoposPerformer'])
     parser.add_argument('dataset', choices=[
         'FashionMNIST', 'MNIST', 'CIFAR10'])
+    parser.add_argument('--log_path', type=str, default='lightning_logs')
+    parser.add_argument('--exp_name', type=str, default='default')
+    parser.add_argument('--version', type=str, default=None)
+
     parser.add_argument('--batch_size', default=16, type=int)
 
     partial_args, _ = parser.parse_known_args()
     if partial_args.model == 'Performer':
         parser = PerformerModel.add_model_specific_args(parser)
-        model = PerformerModel
+        model_cls = PerformerModel
     elif partial_args.model == 'RelativePerformer':
         parser = RelativePerformerModel.add_model_specific_args(parser)
-        model = RelativePerformerModel
+        model_cls = RelativePerformerModel
     elif partial_args.model == 'NoposPerformer':
         parser = NoposPerformerModel.add_model_specific_args(parser)
-        model = NoposPerformerModel
+        model_cls = NoposPerformerModel
     args = parser.parse_args()
 
     data_cls = getattr(datasets, args.dataset + 'DataModule')
-    num_workers = 4
+    num_workers = 0
     # Handle incosistencies in DataModules: Some datasets accept batch_size,
     # some don't, some simply ignore it.
     if args.dataset == 'MNIST':
@@ -309,7 +348,7 @@ if __name__ == '__main__':
 
     in_features, nx, ny = dataset.dims
     max_pos = max(nx, ny)
-    model = model(
+    model = model_cls(
         **vars(args),
         in_features=in_features,
         pos_dims=2,
@@ -317,7 +356,36 @@ if __name__ == '__main__':
         num_classes=dataset.num_classes
     )
 
-    trainer = pl.Trainer(gpus=-1 if GPU_AVAILABLE else None)
+    # Setup logging, checkpointing and early stopping
+    logger = TbWithMetricsLogger(
+        args.log_path,
+        {
+            'train/loss_epoch': float('inf'),
+            'train/acc_epoch': float('-inf'),
+            'val/loss': float('inf'),
+            'val/acc': float('-inf'),
+            'test/loss': float('inf'),
+            'test/acc': float('-inf')
+        },
+        name=args.exp_name,
+        version=args.version
+    )
+    model_checkpoint_cb = pl.callbacks.ModelCheckpoint(
+        monitor='val/acc',
+        mode='max',
+        save_top_k=1,
+        dirpath=os.path.join(logger.log_dir, 'checkpoints')
+    )
+    early_stopping_cb = pl.callbacks.EarlyStopping(
+        monitor='val/acc', patience=10, mode='max', strict=True,
+        verbose=1)
+
+    trainer = pl.Trainer(
+        gpus=-1 if GPU_AVAILABLE else None,
+        logger=logger,
+        log_every_n_steps=1,
+        callbacks=[model_checkpoint_cb, early_stopping_cb],
+        limit_train_batches=2, limit_val_batches=1, limit_test_batches=1, max_epochs=2)
     # Handle incosistencies in DataModules: Some datasets only listen to the
     # batch_size argumen if it is passed here, others don't have to argument.
     # MNIST and FashionMNIST take batch_size as argument here, while CIFAR10
@@ -325,12 +393,20 @@ if __name__ == '__main__':
     try:
         train_loader = dataset.train_dataloader(batch_size=args.batch_size)
         val_loader = dataset.val_dataloader(batch_size=args.batch_size)
+        test_loader = dataset.test_dataloader(batch_size=args.batch_size)
     except TypeError:
         train_loader = dataset.train_dataloader()
         val_loader = dataset.val_dataloader()
+        test_loader = dataset.test_dataloader()
 
     trainer.fit(
         model,
         train_dataloader=train_loader,
-        val_dataloaders=val_loader
+        val_dataloaders=val_loader,
     )
+    print('Loading model form', model_checkpoint_cb.best_model_path)
+    trainer.test(
+        ckpt_path=model_checkpoint_cb.best_model_path,
+        test_dataloaders=test_loader
+    )
+    logger.save()
