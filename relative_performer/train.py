@@ -146,27 +146,35 @@ class RelativePerformerModel(pl.LightningModule):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('dataset', choices=[
-        'FashionMNIST', 'MNIST', 'CIFAR10', 'TinyCIFAR10'])
+        'FashionMNIST', 'MNIST', 'CIFAR10'])
     parser.add_argument('--batch_size', default=16, type=int)
 
     parser = RelativePerformerModel.add_model_specific_args(parser)
     args = parser.parse_args()
 
     data_cls = getattr(datasets, args.dataset + 'DataModule')
-    try:
-        dataset = data_cls(
+    num_workers = 4
+    # Handle incosistencies in DataModules: Some datasets accept batch_size,
+    # some don't, some simply ignore it.
+    if args.dataset == 'MNIST':
+        dataset = datasets.MNISTDataModule(
             DATA_PATH.joinpath(args.dataset),
-            normalize=True,
-            num_workers=4,
-            # shuffle=True  # TODO: Newer versions might require this to be set
+            num_workers=num_workers
         )
-    except TypeError:
-        # Some of the dataset modules don't support the normalize keyword
-        dataset = data_cls(
+    elif args.dataset == 'FashionMNIST':
+        dataset = datasets.FashionMNISTDataModule(
             DATA_PATH.joinpath(args.dataset),
-            num_workers=4
-            # shuffle=True  # TODO: Newer versions might require this to be set
+            num_workers=num_workers
         )
+    elif args.dataset == 'CIFAR10':
+        dataset = datasets.CIFAR10DataModule(
+            DATA_PATH.joinpath(args.dataset),
+            num_workers=num_workers,
+            batch_size=args.batch_size
+        )
+
+    dataset.prepare_data()
+
     in_features, nx, ny = dataset.dims
     max_pos = max(nx, ny)
     model = RelativePerformerModel(
@@ -178,8 +186,19 @@ if __name__ == '__main__':
     )
 
     trainer = pl.Trainer(gpus=-1 if GPU_AVAILABLE else None)
+    # Handle incosistencies in DataModules: Some datasets only listen to the
+    # batch_size argumen if it is passed here, others don't have to argument.
+    # MNIST and FashionMNIST take batch_size as argument here, while CIFAR10
+    # requires it as a constructor argument.
+    try:
+        train_loader = dataset.train_dataloader(batch_size=args.batch_size)
+        val_loader = dataset.val_dataloader(batch_size=args.batch_size)
+    except TypeError:
+        train_loader = dataset.train_dataloader()
+        val_loader = dataset.val_dataloader()
+
     trainer.fit(
         model,
-        train_dataloader=dataset.train_dataloader(batch_size=args.batch_size),
-        val_dataloaders=dataset.val_dataloader(batch_size=args.batch_size)
+        train_dataloader=train_loader,
+        val_dataloaders=val_loader
     )
