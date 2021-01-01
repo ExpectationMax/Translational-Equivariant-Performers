@@ -115,6 +115,7 @@ class RelativePerformerModel(pl.LightningModule):
         x = x.permute(0, 2, 3, 1)
         logits = self(x)
         loss = self.loss(logits, y)
+        self.log('train_loss', loss, on_step=True, on_epoch=True)
         self.train_acc(logits, y)
         self.log('train_acc', self.train_acc, on_step=True, on_epoch=True,
                  prog_bar=True)
@@ -127,6 +128,7 @@ class RelativePerformerModel(pl.LightningModule):
         x = x.permute(0, 2, 3, 1)
         logits = self(x)
         loss = self.loss(logits, y)
+        self.log('val_loss', loss, on_step=True, on_epoch=True)
         self.val_acc(logits, y)
         self.log('val_acc', self.val_acc, on_step=True, on_epoch=True)
         return loss
