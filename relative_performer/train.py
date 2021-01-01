@@ -155,7 +155,6 @@ if __name__ == '__main__':
     try:
         dataset = data_cls(
             DATA_PATH.joinpath(args.dataset),
-            batch_size=args.batch_size,
             normalize=True,
             num_workers=4
             # shuffle=True  # TODO: Newer versions might require this to be set
@@ -164,7 +163,6 @@ if __name__ == '__main__':
         # Some of the dataset modules don't support the normalize keyword
         dataset = data_cls(
             DATA_PATH.joinpath(args.dataset),
-            batch_size=args.batch_size,
             num_workers=4
             # shuffle=True  # TODO: Newer versions might require this to be set
         )
@@ -179,4 +177,8 @@ if __name__ == '__main__':
     )
 
     trainer = pl.Trainer()
-    trainer.fit(model, datamodule=dataset)
+    trainer.fit(
+        model,
+        train_dataloader=dataset.train_dataloader(batch_size=args.batch_size),
+        val_dataloaders=dataset.val_dataloader(batch_size=args.batch_size)
+    )
