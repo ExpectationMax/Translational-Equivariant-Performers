@@ -175,6 +175,7 @@ class NoposPerformerModel(PerfomerBase):
 
     def forward(self, x):
         embedding = self.content_embedding(x)
+        embedding = rearrange(embedding, 'b x y d -> b (x y) d')
         bs_embedding = embedding.shape[0]
         # Add learnt class query to input, with zero positional encoding
         embedding = torch.cat(
