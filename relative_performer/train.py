@@ -82,11 +82,12 @@ class RelativePerformerModel(pl.LightningModule):
             embeddings, pos_embeddings both with additional class query element
             at the beginning of the sequence.
         """
-        bs, *_, pos_embedding_dim = pos_embedding.shape
+        bs_embedding = embedding.shape[0]
+        bs_pos, *_, pos_embedding_dim = pos_embedding.shape
         # Add learnt class query to input, with zero positional encoding
         embedding = torch.cat(
             [
-                self.class_query[None, None, :].expand(bs, 1, 1),
+                self.class_query[None, None, :].expand(bs_embedding, -1, -1),
                 embedding
             ],
             axis=1
@@ -105,6 +106,7 @@ class RelativePerformerModel(pl.LightningModule):
         embedding, positions = self._flatten_to_sequence(embedding)
         positions = self._compute_positional_embeddings(positions)
         # First element contains class prediction
+        embedding, positions = self._add_class_query(embedding, positions)
         out = self.performer(embedding, positions)[:, 0]
         return self.output_layer(out)
 
