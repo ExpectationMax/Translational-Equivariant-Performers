@@ -284,7 +284,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     data_cls = getattr(datasets, args.dataset + 'DataModule')
-    num_workers = 0
+    num_workers = 4
     # Handle incosistencies in DataModules: Some datasets accept batch_size,
     # some don't, some simply ignore it.
     if args.dataset == 'MNIST':
