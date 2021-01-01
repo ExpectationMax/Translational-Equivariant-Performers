@@ -358,9 +358,8 @@ if __name__ == '__main__':
     trainer = pl.Trainer(
         gpus=-1 if GPU_AVAILABLE else None,
         logger=logger,
-        log_every_n_steps=1,
-        callbacks=[model_checkpoint_cb, early_stopping_cb],
-        limit_train_batches=2, limit_val_batches=1, limit_test_batches=1, max_epochs=2)
+        callbacks=[model_checkpoint_cb, early_stopping_cb]
+    )
     # Handle incosistencies in DataModules: Some datasets only listen to the
     # batch_size argumen if it is passed here, others don't have to argument.
     # MNIST and FashionMNIST take batch_size as argument here, while CIFAR10
