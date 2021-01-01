@@ -77,6 +77,7 @@ class PerfomerBase(pl.LightningModule):
             embeddings, pos_embeddings both with additional class query element
             at the beginning of the sequence.
         """
+        device = embedding.device
         bs_embedding = embedding.shape[0]
         bs_pos, *_, pos_embedding_dim = pos_embedding.shape
         # Add learnt class query to input, with zero positional encoding
@@ -89,7 +90,7 @@ class PerfomerBase(pl.LightningModule):
         )
         pos_embedding = torch.cat(
             [
-                torch.zeros(1, 1, pos_embedding_dim),
+                torch.zeros(1, 1, pos_embedding_dim, device=device),
                 pos_embedding
             ],
             axis=1
@@ -272,8 +273,7 @@ if __name__ == '__main__':
         num_classes=dataset.num_classes
     )
 
-    trainer = pl.Trainer(gpus=-1 if GPU_AVAILABLE else None,
-                         weights_summary='full')
+    trainer = pl.Trainer(gpus=-1 if GPU_AVAILABLE else None)
     # Handle incosistencies in DataModules: Some datasets only listen to the
     # batch_size argumen if it is passed here, others don't have to argument.
     # MNIST and FashionMNIST take batch_size as argument here, while CIFAR10
