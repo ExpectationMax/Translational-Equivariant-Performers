@@ -262,31 +262,6 @@ class RelativePerformerModel(PerfomerBase):
         out = self.performer(embedding, positions)[:, 0]
         return self.output_layer(out)
 
-    def training_step(self, batch, batch_idx):
-        x, y = batch
-        # The datasets always input in the format (C, W, H) instead of (W, H,
-        # C).
-        x = x.permute(0, 2, 3, 1)
-        logits = self(x)
-        loss = self.loss(logits, y)
-        self.log('train_loss', loss, on_step=True, on_epoch=True)
-        self.train_acc(logits, y)
-        self.log('train_acc', self.train_acc, on_step=True, on_epoch=True,
-                 prog_bar=True)
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        x, y = batch
-        # The datasets always input in the format (C, W, H) instead of (W, H,
-        # C).
-        x = x.permute(0, 2, 3, 1)
-        logits = self(x)
-        loss = self.loss(logits, y)
-        self.log('val_loss', loss, on_step=True, on_epoch=True)
-        self.val_acc(logits, y)
-        self.log('val_acc', self.val_acc, on_step=True, on_epoch=True)
-        return loss
-
     @ staticmethod
     def add_model_specific_args(parent_parser):
         parser = argparse.ArgumentParser(
