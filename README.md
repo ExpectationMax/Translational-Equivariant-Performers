@@ -45,6 +45,11 @@ optional arguments:
 
 This script should be extended to also support other types of models.
 
+The logs of successful runs will be stored in the path
+`lighting_logs/version_X` where `X` is automatically incremented for each run
+and missing datasets will automatically be downloaded to the path
+`<project_root>/data`.
+
 ### Example - Training on MNIST
 Training the relative performer model on MNIST with default parameters can be
 achieved using the command below:
