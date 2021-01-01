@@ -160,6 +160,45 @@ class PerformerModel(PerfomerBase):
         return parser
 
 
+class NoposPerformerModel(PerfomerBase):
+    def __init__(self, dim, depth, heads, max_pos=32, **kwargs):
+        super().__init__(dim=dim, **kwargs)
+        self.save_hyperparameters()
+        self.performer = Performer(
+            dim,
+            depth,
+            heads
+        )
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), self.hparams.learning_rate)
+
+    def forward(self, x):
+        embedding = self.content_embedding(x)
+        bs_embedding = embedding.shape[0]
+        # Add learnt class query to input, with zero positional encoding
+        embedding = torch.cat(
+            [
+                self.class_query[None, None, :].expand(bs_embedding, -1, -1),
+                embedding
+            ],
+            axis=1
+        )
+        # First element contains class prediction
+        out = self.performer(embedding)[:, 0]
+        return self.output_layer(out)
+
+    @ staticmethod
+    def add_model_specific_args(parent_parser):
+        parser = argparse.ArgumentParser(
+            parents=[parent_parser], add_help=False)
+        parser.add_argument('--learning_rate', default=0.001, type=float)
+        parser.add_argument('--dim', type=int, default=128)
+        parser.add_argument('--depth', type=int, default=4)
+        parser.add_argument('--heads', type=int, default=4)
+        return parser
+
+
 class RelativePerformerModel(PerfomerBase):
     def __init__(self, dim, depth, heads, pos_scales, pos_dims=1, max_pos=32,
                  **kwargs):
@@ -226,7 +265,8 @@ class RelativePerformerModel(PerfomerBase):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('model', choices=['Performer', 'RelativePerformer'])
+    parser.add_argument('model', choices=['Performer', 'RelativePerformer',
+                                          'NoposPerformer'])
     parser.add_argument('dataset', choices=[
         'FashionMNIST', 'MNIST', 'CIFAR10'])
     parser.add_argument('--batch_size', default=16, type=int)
@@ -238,6 +278,9 @@ if __name__ == '__main__':
     elif partial_args.model == 'RelativePerformer':
         parser = RelativePerformerModel.add_model_specific_args(parser)
         model = RelativePerformerModel
+    elif partial_args.model == 'NoposPerformer':
+        parser = NoposPerformerModel.add_model_specific_args(parser)
+        model = NoposPerformerModel
     args = parser.parse_args()
 
     data_cls = getattr(datasets, args.dataset + 'DataModule')
