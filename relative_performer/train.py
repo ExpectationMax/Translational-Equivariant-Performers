@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Train a model."""
 import argparse
 from pathlib import Path
