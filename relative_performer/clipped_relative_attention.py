@@ -159,12 +159,12 @@ def relative_attention(q, rpe, v):
     q_rel[:,:,valid != True] = 0
 
     rel_window = (max_rel_dist-1)*img_dim+max_rel_dist-1
-    v_padded = torch.zeros((batch_size, heads, rel_window*2 + L, v.shape[-1]))
+    v_padded = torch.zeros((batch_size, heads, rel_window*2 + L, v.shape[-1]), device=q.device)
     v_padded[:,:,rel_window:rel_window+L,:] = v
     v_unfolded = v_padded.unfold(2,rel_window*2+1,1).permute(0,1,2,4,3)
     indices = (torch.arange(0,max_rel_dist*2-1).repeat(max_rel_dist*2-1) + torch.arange(0,(max_rel_dist*2-1)*10, 10).repeat_interleave(max_rel_dist*2-1))
     # TODO: make sparse tensor
-    q_rel_sparse = torch.zeros((batch_size, heads, L, rel_window*2+1))
+    q_rel_sparse = torch.zeros((batch_size, heads, L, rel_window*2+1), device=q.device)
     q_rel_sparse[:,:,:,indices] = q_rel
 
     q_max_dist = torch.einsum('...ij,j->...i', q, max_dist_enc)
