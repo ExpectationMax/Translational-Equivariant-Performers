@@ -7,7 +7,7 @@ from einops import rearrange, repeat
 from relative_performer.performer_pytorch import (
     default, exists, PreLayerNorm, ReZero, PreScaleNorm, Chunk,
     FeedForward, get_module_device, find_modules, gaussian_orthogonal_random_matrix,
-    softmax_kernel)
+    softmax_kernel, FastAttention, empty)
 from relative_performer.reversible import ReversibleSequence, SequentialSequence
 
 
@@ -21,6 +21,7 @@ class ClippedRelativeSelfAttention(nn.Module):
         dim_head = dim // heads 
         inner_dim = dim_head * heads
         
+        self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, qr_uniform_q = qr_uniform_q, no_projection = no_projection)
         self.relative_attention = RelativeFastAttention(
             dim_head,
             nb_features,
@@ -31,16 +32,20 @@ class ClippedRelativeSelfAttention(nn.Module):
             no_projection=no_projection
         )
 
+        content_heads = heads // 2
+        content_inner_dim = dim_head * content_heads
         self.heads = heads
+        self.content_heads = content_heads
 
         self.to_q = nn.Linear(dim, inner_dim)
         self.rpe = nn.Parameter(torch.zeros((max_rel_dist+1, dim_head)))
         self.to_v = nn.Linear(dim, inner_dim)
+        self.to_k = nn.Linear(dim, content_inner_dim) # k will only be used in content heads
         self.to_out = nn.Linear(inner_dim, dim)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, context=None, mask=None, context_mask=None, **kwargs):
-        b, n, _, h = *x.shape, self.heads
+        b, n, _, h, ch = *x.shape, self.heads, self.content_heads
 
         cross_attend = exists(context)
 
@@ -48,17 +53,27 @@ class ClippedRelativeSelfAttention(nn.Module):
         context_mask = default(
             context_mask, mask) if not cross_attend else context_mask
 
-        q, rpe, v = self.to_q(x), self.rpe, self.to_v(context)
+        q, k, v = self.to_q(x), self.to_k(x), self.to_v(context)
+        rpe = self.rpe
 
         q, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = h), (q, v))
-        # v = rearrange(v, 'b n (h d) -> b h n d', h=h)
+        k = rearrange(k, 'b n (h d) -> b h n d', h=ch)
+        (q, rel_q), (v, rel_v) = map(lambda t: (t[:, :ch], t[:, ch:]), (q, v))
 
-        if exists(context_mask):
-            global_mask = context_mask[:, None, :, None]
-            v.masked_fill_(~global_mask, 0.)
+        attn_outs = []
 
-        out = self.relative_attention(q, rpe, v)
+        if not empty(q):
+            if exists(context_mask):
+                global_mask = context_mask[:, None, :, None]
+                v.masked_fill_(~global_mask, 0.)
+            out = self.fast_attention(q, k, v)
+            attn_outs.append(out)
 
+        if not empty(rel_q):
+            out = self.relative_attention(rel_q, rpe, rel_v)
+            attn_outs.append(out)
+
+        out = torch.cat(attn_outs, dim = 1)
         out = rearrange(out, 'b h n d -> b n (h d)')
         out = self.to_out(out)
         return self.dropout(out)
