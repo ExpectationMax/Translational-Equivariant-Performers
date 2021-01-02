@@ -12,6 +12,7 @@ from einops import rearrange
 from relative_performer.performer_pytorch import Performer
 from relative_performer.constrained_relative_encoding import (
     RelativePerformer, LearnableSinusoidEncoding)
+from relative_performer.clipped_relative_attention import ClippedRelativePerformer
 
 GPU_AVAILABLE = torch.cuda.is_available() and torch.cuda.device_count() > 0
 DATA_PATH = Path(__file__).parent.parent.joinpath('data')
@@ -273,11 +274,51 @@ class RelativePerformerModel(PerfomerBase):
         parser.add_argument('--pos_scales', type=int, default=4)
         return parser
 
+class ClippedRelativePerformerModel(PerfomerBase):
+    def __init__(self, dim, depth, heads, max_pos=32, max_rel_dist=8, **kwargs):
+        super().__init__(dim=dim, **kwargs)
+        self.save_hyperparameters()
+        self.performer = ClippedRelativePerformer(
+            dim,
+            depth,
+            heads,
+            max_rel_dist=max_rel_dist
+        )
+
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), self.hparams.learning_rate)
+
+    def forward(self, x):
+        embedding = self.content_embedding(x)
+        embedding = rearrange(embedding, 'b x y d -> b (x y) d')
+        bs_embedding = embedding.shape[0]
+        # Add learnt class query to input
+        embedding = torch.cat(
+            [
+                embedding,
+                self.class_query[None, None, :].expand(bs_embedding, -1, -1),
+            ],
+            axis=1
+        )
+        # Last element contains class prediction
+        out = self.performer(embedding)[:, -1]
+        return self.output_layer(out)
+
+    @ staticmethod
+    def add_model_specific_args(parent_parser):
+        parser = argparse.ArgumentParser(
+            parents=[parent_parser], add_help=False)
+        parser.add_argument('--learning_rate', default=0.001, type=float)
+        parser.add_argument('--dim', type=int, default=128)
+        parser.add_argument('--depth', type=int, default=4)
+        parser.add_argument('--heads', type=int, default=4)
+        parser.add_argument('--max_rel_dist', type=int, default=8)
+        return parser
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('model', choices=['Performer', 'RelativePerformer',
-                                          'NoposPerformer'])
+                                          'NoposPerformer', 'ClippedRelativePerformer'])
     parser.add_argument('dataset', choices=[
         'FashionMNIST', 'MNIST', 'CIFAR10'])
     parser.add_argument('--log_path', type=str, default='lightning_logs')
@@ -296,6 +337,9 @@ if __name__ == '__main__':
     elif partial_args.model == 'NoposPerformer':
         parser = NoposPerformerModel.add_model_specific_args(parser)
         model_cls = NoposPerformerModel
+    elif partial_args.model == 'ClippedRelativePerformer':
+        parser = ClippedRelativePerformerModel.add_model_specific_args(parser)
+        model_cls = ClippedRelativePerformerModel
     args = parser.parse_args()
 
     data_cls = getattr(datasets, args.dataset + 'DataModule')
