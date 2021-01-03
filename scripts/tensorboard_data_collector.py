@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+"""Script for exporting tensorboard logs to csv."""
 import re
 import numpy as np
 from collections import defaultdict
@@ -7,11 +9,13 @@ from tensorboard.backend.event_processing.event_multiplexer import EventMultiple
 
 class TensorboardDataHelper():
     """Class to help extrat summary values from the end of multiple runs"""
+
     def __init__(self, logdir, tags=None, tag_filter_fn=None, n_values=1, run_filter_fn=lambda a: True, keep_nans=False):
         if tags is None and tag_filter_fn is None:
             raise ValueError('Either tags or tag_filter_fn must be defined!')
         if tags is not None and tag_filter_fn is not None:
-            raise ValueError('Only one of tags or tag_filter_fn can be defined at once!')
+            raise ValueError(
+                'Only one of tags or tag_filter_fn can be defined at once!')
 
         self.logdir = logdir
         self.n_values = n_values
@@ -40,6 +44,7 @@ class TensorboardDataHelper():
     def _get_last_events(self, list_of_events):
         """Get last scalars in terms of training step"""
         return list_of_events
+
         def get_training_step(event):
             return event.step
         events = sorted(list_of_events, key=get_training_step)
@@ -76,8 +81,10 @@ def main(tf_logdir, run_regex, tag_regex, n_values, outputfile):
     def run_selector(run):
         return re.search(run_regex, run) is not None
 
-    print('Saving runs in {tf_logdir} matching {run_regex} and data of tags matching {tag_regex} to {outputfile}'.format(**locals()))
-    tfboard_helper = TensorboardDataHelper(tf_logdir, tag_filter_fn=tag_selector, run_filter_fn=run_selector, n_values=n_values)
+    print('Saving runs in {tf_logdir} matching {run_regex} and data of tags matching {tag_regex} to {outputfile}'.format(
+        **locals()))
+    tfboard_helper = TensorboardDataHelper(
+        tf_logdir, tag_filter_fn=tag_selector, run_filter_fn=run_selector, n_values=n_values)
 
     print('Matching runs: {}'.format(list(tfboard_helper.get_matching_runs())))
     df = tfboard_helper.generate_pandas_dataframe()
@@ -86,12 +93,18 @@ def main(tf_logdir, run_regex, tag_regex, n_values, outputfile):
 
 if __name__ == '__main__':
     import argparse
-    parser = argparse.ArgumentParser(description='Read most recent data from tensorboard log and write to csv file')
+    parser = argparse.ArgumentParser(
+        description='Read most recent data from tensorboard log and write to csv file')
     parser.add_argument('tf_logdir', help='Log directory of tensorboard')
-    parser.add_argument('outputfile', help='Path where the resulting csv should be stored')
-    parser.add_argument('--filter-runs', help='Regex used to filter runs (default: "*")', default='.*')
-    parser.add_argument('--filter-tags', help='Regex used to filter tags (default: "*")', default='.*')
-    parser.add_argument('--last', help='Store last # non-nan values of each run (default: 1)', type=int, default=1)
+    parser.add_argument(
+        'outputfile', help='Path where the resulting csv should be stored')
+    parser.add_argument(
+        '--filter-runs', help='Regex used to filter runs (default: "*")', default='.*')
+    parser.add_argument(
+        '--filter-tags', help='Regex used to filter tags (default: "*")', default='.*')
+    parser.add_argument(
+        '--last', help='Store last # non-nan values of each run (default: 1)', type=int, default=1)
 
     args = parser.parse_args()
-    main(args.tf_logdir, args.filter_runs, args.filter_tags, args.last, args.outputfile)
+    main(args.tf_logdir, args.filter_runs,
+         args.filter_tags, args.last, args.outputfile)
