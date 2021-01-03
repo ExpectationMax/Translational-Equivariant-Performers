@@ -18,7 +18,6 @@ GPU_AVAILABLE = torch.cuda.is_available() and torch.cuda.device_count() > 0
 DATA_PATH = Path(__file__).parent.parent.joinpath('data')
 
 
-
 class TbWithMetricsLogger(pl.loggers.TensorBoardLogger):
     def __init__(self, save_dir, initial_values, **kwargs):
         super().__init__(save_dir, default_hp_metric=False, **kwargs)
@@ -238,7 +237,7 @@ class NoposPerformerModel(PerfomerBase):
 
 class RelativePerformerModel(PerfomerBase):
     def __init__(self, dim, depth, heads, pos_scales, pos_dims=1, max_pos=32,
-                 **kwargs):
+                 feature_redraw_interval=100, no_projection=False, **kwargs):
         super().__init__(dim=dim, **kwargs)
         self.save_hyperparameters()
         self.positional_embedding = LearnableSinusoidEncoding(
@@ -248,7 +247,9 @@ class RelativePerformerModel(PerfomerBase):
             depth,
             heads,
             pos_dims=pos_dims,
-            pos_scales=pos_scales
+            pos_scales=pos_scales,
+            feature_redraw_interval=feature_redraw_interval,
+            no_projection=no_projection
         )
 
     def configure_optimizers(self):
@@ -272,7 +273,12 @@ class RelativePerformerModel(PerfomerBase):
         parser.add_argument('--depth', type=int, default=4)
         parser.add_argument('--heads', type=int, default=4)
         parser.add_argument('--pos_scales', type=int, default=4)
+        parser.add_argument('--feature_redraw_interval',
+                            type=int, default=1000)
+        parser.add_argument(
+            '--no_projection', default=False, action='store_true')
         return parser
+
 
 class ClippedRelativePerformerModel(PerfomerBase):
     def __init__(self, dim, depth, heads, max_pos=32, max_rel_dist=8, **kwargs):
@@ -314,6 +320,7 @@ class ClippedRelativePerformerModel(PerfomerBase):
         parser.add_argument('--heads', type=int, default=4)
         parser.add_argument('--max_rel_dist', type=int, default=8)
         return parser
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
