@@ -2,40 +2,23 @@
 """Train a model."""
 import argparse
 from pathlib import Path
-import os
+
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 import pl_bolts.datamodules as datasets
 from einops import rearrange
 
+from relative_performer.embedding_utils import (
+    LookupEmbedding, MLPEmbedding, ToIntTensor)
+from relative_performer.logging_utils import TbWithMetricsLogger
 from relative_performer.performer_pytorch import Performer
+from relative_performer.clipped_relative_attention import ClippedRelativePerformer
 from relative_performer.constrained_relative_encoding import (
     RelativePerformer, LearnableSinusoidEncoding)
-from relative_performer.clipped_relative_attention import ClippedRelativePerformer
 
 GPU_AVAILABLE = torch.cuda.is_available() and torch.cuda.device_count() > 0
 DATA_PATH = Path(__file__).parent.parent.joinpath('data')
-
-
-class TbWithMetricsLogger(pl.loggers.TensorBoardLogger):
-    def __init__(self, save_dir, initial_values, **kwargs):
-        super().__init__(save_dir, default_hp_metric=False, **kwargs)
-        self.hparams_saved = False
-        self.initial_values = initial_values
-
-    @pl.utilities.rank_zero_only
-    def log_hyperparams(self, params):
-        print('Called log hparams')
-        # Somehow hyperparameters are saved when a model is simply restored,
-        # catch that here so we don't add an incorrect value when restoring.
-        if self.hparams_saved:
-            return
-        super().log_hyperparams(
-            params,
-            self.initial_values
-        )
-        self.hparams_saved = True
 
 
 class PerfomerBase(pl.LightningModule):
@@ -43,13 +26,22 @@ class PerfomerBase(pl.LightningModule):
 
     positional_embedding: nn.Module
 
-    def __init__(self, in_features, dim, num_classes, **kwargs):
+    def __init__(self, in_features, dim, num_classes,
+                 embedding_type, **kwargs):
         super().__init__()
         self.in_features = in_features
         self.dim = dim
         self.num_classes = num_classes
 
-        self.content_embedding = nn.Linear(in_features, dim)
+        if embedding_type == 'linear':
+            self.content_embedding = nn.Linear(in_features, dim)
+        elif embedding_type == 'MLP':
+            self.content_embedding = MLPEmbedding(in_features, dim)
+        elif embedding_type == 'lookup':
+            self.content_embedding = LookupEmbedding(in_features, dim)
+        else:
+            raise ValueError(
+                'Invalid embedding_type: {}'.format(embedding_type))
         self.class_query = nn.Parameter(torch.Tensor(dim))
         self.output_layer = nn.Linear(dim, num_classes)
         self.loss = nn.CrossEntropyLoss()
@@ -333,6 +325,11 @@ if __name__ == '__main__':
     parser.add_argument('--version', type=str, default=None)
 
     parser.add_argument('--batch_size', default=16, type=int)
+    parser.add_argument(
+        '--embedding_type',
+        default='linear',
+        choices=['linear', 'MLP', 'lookup']
+    )
 
     partial_args, _ = parser.parse_known_args()
     if partial_args.model == 'Performer':
@@ -351,26 +348,38 @@ if __name__ == '__main__':
 
     data_cls = getattr(datasets, args.dataset + 'DataModule')
     num_workers = 0
+
+    transforms = ToIntTensor if args.embedding_type == 'lookup' else None
     # Handle incosistencies in DataModules: Some datasets accept batch_size,
     # some don't, some simply ignore it.
     if args.dataset == 'MNIST':
         dataset = datasets.MNISTDataModule(
             DATA_PATH.joinpath(args.dataset),
-            num_workers=num_workers
+            num_workers=num_workers,
+            train_transforms=transforms,
+            val_transforms=transforms,
+            test_transforms=transforms
         )
     elif args.dataset == 'FashionMNIST':
         dataset = datasets.FashionMNISTDataModule(
             DATA_PATH.joinpath(args.dataset),
-            num_workers=num_workers
+            num_workers=num_workers,
+            train_transforms=transforms,
+            val_transforms=transforms,
+            test_transforms=transforms
         )
     elif args.dataset == 'CIFAR10':
         dataset = datasets.CIFAR10DataModule(
             DATA_PATH.joinpath(args.dataset),
             num_workers=num_workers,
-            batch_size=args.batch_size
+            batch_size=args.batch_size,
+            train_transforms=transforms,
+            val_transforms=transforms,
+            test_transforms=transforms
         )
 
     dataset.prepare_data()
+    dataset.setup()
 
     in_features, nx, ny = dataset.dims
     max_pos = max(nx, ny)
@@ -400,7 +409,7 @@ if __name__ == '__main__':
         monitor='val/acc',
         mode='max',
         save_top_k=1,
-        dirpath=os.path.join(logger.log_dir, 'checkpoints')
+        dirpath=Path(logger.log_dir).joinpath('checkpoints')
     )
     early_stopping_cb = pl.callbacks.EarlyStopping(
         monitor='val/acc', patience=10, mode='max', strict=True,
