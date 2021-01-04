@@ -163,7 +163,12 @@ class PerformerModel(PerfomerBase):
         )
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), self.hparams.learning_rate)
+        return torch.optim.Adam(
+            self.parameters(),
+            self.hparams.learning_rate,
+            betas=[0.9, 0.98],
+            weight_decay=0.1
+        )
 
     def forward(self, x):
         embedding = self.content_embedding(x)
@@ -198,7 +203,12 @@ class NoposPerformerModel(PerfomerBase):
         )
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), self.hparams.learning_rate)
+        return torch.optim.Adam(
+            self.parameters(),
+            self.hparams.learning_rate,
+            betas=[0.9, 0.98],
+            weight_decay=0.1
+        )
 
     def forward(self, x):
         embedding = self.content_embedding(x)
@@ -245,7 +255,12 @@ class RelativePerformerModel(PerfomerBase):
         )
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), self.hparams.learning_rate)
+        return torch.optim.Adam(
+            self.parameters(),
+            self.hparams.learning_rate,
+            betas=[0.9, 0.98],
+            weight_decay=0.1
+        )
 
     def forward(self, x):
         embedding = self.content_embedding(x)
@@ -284,7 +299,12 @@ class ClippedRelativePerformerModel(PerfomerBase):
         )
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), self.hparams.learning_rate)
+        return torch.optim.Adam(
+            self.parameters(),
+            self.hparams.learning_rate,
+            betas=[0.9, 0.98],
+            weight_decay=0.1
+        )
 
     def forward(self, x):
         embedding = self.content_embedding(x)
@@ -416,9 +436,11 @@ if __name__ == '__main__':
 
     trainer = pl.Trainer(
         gpus=-1 if GPU_AVAILABLE else None,
+        gradient_clip_val=0.5,  # Same as performer paper
         logger=logger,
         callbacks=[model_checkpoint_cb, early_stopping_cb]
     )
+
     # Handle incosistencies in DataModules: Some datasets only listen to the
     # batch_size argumen if it is passed here, others don't have to argument.
     # MNIST and FashionMNIST take batch_size as argument here, while CIFAR10
