@@ -43,13 +43,11 @@ class TensorboardDataHelper():
 
     def _get_last_events(self, list_of_events):
         """Get last scalars in terms of training step"""
-        return list_of_events
-
         def get_training_step(event):
             return event.step
         events = sorted(list_of_events, key=get_training_step)
         if not self.keep_nans:
-            events = filter(lambda ev: np.isfinite(ev.value), events)
+            events = list(filter(lambda ev: np.isfinite(ev.value), events))
         return events[-self.n_values:]
 
     def generate_directory_of_values(self):
