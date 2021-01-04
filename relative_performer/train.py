@@ -448,7 +448,7 @@ if __name__ == '__main__':
         dirpath=Path(logger.log_dir).joinpath('checkpoints')
     )
     early_stopping_cb = pl.callbacks.EarlyStopping(
-        monitor='val/acc', patience=10, mode='max', strict=True,
+        monitor='val/acc', patience=20, mode='max', strict=True,
         verbose=1)
 
     trainer = pl.Trainer(
