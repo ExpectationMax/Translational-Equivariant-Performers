@@ -151,7 +151,8 @@ class PerfomerBase(pl.LightningModule):
 
 
 class PerformerModel(PerfomerBase):
-    def __init__(self, dim, depth, heads, max_pos=32, **kwargs):
+    def __init__(self, dim, depth, heads, attn_dropout=0., ff_dropout=0.,
+                 max_pos=32, **kwargs):
         super().__init__(dim=dim, **kwargs)
         self.save_hyperparameters()
         self.positional_embedding = LearnableSinusoidEncoding(
@@ -159,7 +160,9 @@ class PerformerModel(PerfomerBase):
         self.performer = Performer(
             dim,
             depth,
-            heads
+            heads,
+            attn_dropout=attn_dropout,
+            ff_dropout=ff_dropout
         )
 
     def configure_optimizers(self):
@@ -189,17 +192,22 @@ class PerformerModel(PerfomerBase):
         parser.add_argument('--dim', type=int, default=128)
         parser.add_argument('--depth', type=int, default=4)
         parser.add_argument('--heads', type=int, default=4)
+        parser.add_argument('--attn_dropout', default=0.1, type=float)
+        parser.add_argument('--ff_dropout', default=0.1, type=float)
         return parser
 
 
 class NoposPerformerModel(PerfomerBase):
-    def __init__(self, dim, depth, heads, max_pos=32, **kwargs):
+    def __init__(self, dim, depth, heads, attn_dropout=0., ff_dropout=0.,
+                 max_pos=32, **kwargs):
         super().__init__(dim=dim, **kwargs)
         self.save_hyperparameters()
         self.performer = Performer(
             dim,
             depth,
-            heads
+            heads,
+            attn_dropout=attn_dropout,
+            ff_dropout=ff_dropout
         )
 
     def configure_optimizers(self):
@@ -234,11 +242,14 @@ class NoposPerformerModel(PerfomerBase):
         parser.add_argument('--dim', type=int, default=128)
         parser.add_argument('--depth', type=int, default=4)
         parser.add_argument('--heads', type=int, default=4)
+        parser.add_argument('--attn_dropout', default=0.1, type=float)
+        parser.add_argument('--ff_dropout', default=0.1, type=float)
         return parser
 
 
 class RelativePerformerModel(PerfomerBase):
-    def __init__(self, dim, depth, heads, pos_scales, pos_dims=1, max_pos=32,
+    def __init__(self, dim, depth, heads, pos_scales, pos_dims=1,
+                 attn_dropout=0., ff_dropout=0., max_pos=32,
                  feature_redraw_interval=100, no_projection=False, **kwargs):
         super().__init__(dim=dim, **kwargs)
         self.save_hyperparameters()
@@ -250,6 +261,8 @@ class RelativePerformerModel(PerfomerBase):
             heads,
             pos_dims=pos_dims,
             pos_scales=pos_scales,
+            attn_dropout=attn_dropout,
+            ff_dropout=ff_dropout,
             feature_redraw_interval=feature_redraw_interval,
             no_projection=no_projection
         )
@@ -279,6 +292,8 @@ class RelativePerformerModel(PerfomerBase):
         parser.add_argument('--dim', type=int, default=128)
         parser.add_argument('--depth', type=int, default=4)
         parser.add_argument('--heads', type=int, default=4)
+        parser.add_argument('--attn_dropout', default=0.1, type=float)
+        parser.add_argument('--ff_dropout', default=0.1, type=float)
         parser.add_argument('--pos_scales', type=int, default=4)
         parser.add_argument('--feature_redraw_interval',
                             type=int, default=1000)
@@ -330,6 +345,8 @@ class ClippedRelativePerformerModel(PerfomerBase):
         parser.add_argument('--dim', type=int, default=128)
         parser.add_argument('--depth', type=int, default=4)
         parser.add_argument('--heads', type=int, default=4)
+        parser.add_argument('--attn_dropout', default=0.1, type=float)
+        parser.add_argument('--ff_dropout', default=0.1, type=float)
         parser.add_argument('--max_rel_dist', type=int, default=8)
         return parser
 
