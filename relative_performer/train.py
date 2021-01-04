@@ -170,7 +170,7 @@ class PerformerModel(PerfomerBase):
             self.parameters(),
             self.hparams.learning_rate,
             betas=[0.9, 0.98],
-            weight_decay=0.1
+            # weight_decay=0.001
         )
 
     def forward(self, x):
@@ -215,7 +215,7 @@ class NoposPerformerModel(PerfomerBase):
             self.parameters(),
             self.hparams.learning_rate,
             betas=[0.9, 0.98],
-            weight_decay=0.1
+            # weight_decay=0.1
         )
 
     def forward(self, x):
@@ -272,7 +272,7 @@ class RelativePerformerModel(PerfomerBase):
             self.parameters(),
             self.hparams.learning_rate,
             betas=[0.9, 0.98],
-            weight_decay=0.1
+            # weight_decay=0.1
         )
 
     def forward(self, x):
@@ -318,7 +318,7 @@ class ClippedRelativePerformerModel(PerfomerBase):
             self.parameters(),
             self.hparams.learning_rate,
             betas=[0.9, 0.98],
-            weight_decay=0.1
+            # weight_decay=0.1
         )
 
     def forward(self, x):
