@@ -32,6 +32,7 @@ class ClippedRelativeSelfAttention(nn.Module):
             no_projection=no_projection
         )
 
+        # Half of the heads use regular content based attention 
         content_heads = heads // 2
         content_inner_dim = dim_head * content_heads
         self.heads = heads
@@ -168,7 +169,7 @@ def relative_attention(q, rpe, v):
     q_rel_sparse[:,:,:,indices] = q_rel
 
     q_max_dist = torch.einsum('...ij,j->...i', q, max_dist_enc)
-    D_inv =  1. / torch.einsum('...ij,ij->...i', q, (rpe[diffs] - max_dist_enc).sum(dim=1) + max_dist_enc * L)
+    D_inv =  1. / torch.einsum('...ij,ij->...i', q, torch.stack([(diffs == torch.zeros_like(diffs)+i).count_nonzero(dim=1) for i in range(max_rel_dist+1)]).type(torch.float).T @ (rpe - max_dist_enc) + max_dist_enc * L)
     out = torch.einsum('...i,...j->...ij', q_max_dist, v_sum) + torch.einsum('...ij,...ijk->...ik', q_rel_sparse, v_unfolded) 
     out = torch.einsum('...ij,...i->...ij', out, D_inv)
     return out
