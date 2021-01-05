@@ -44,7 +44,7 @@ class LookupEmbedding(nn.Module):
             in_features*self.VALUES_PER_CHANNEL, out_features//in_features)
 
     def forward(self, inputs):
-        offsets = torch.arange(0, inputs.shape[-1]) * self.VALUES_PER_CHANNEL
+        offsets = torch.arange(0, inputs.shape[-1], device=inputs.device) * self.VALUES_PER_CHANNEL
         # Expand axis to match last dimension of input
         added_axes = (None, ) * (len(inputs.shape) - 1)
         offsets = offsets[added_axes]
