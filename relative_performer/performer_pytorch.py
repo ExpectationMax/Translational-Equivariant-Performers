@@ -208,6 +208,12 @@ class FastAttention(nn.Module):
         device = q.device
 
         if self.no_projection:
+            # Instead run conventional attention mechanism
+            matmul_qk = torch.matmul(q, k.transpose(-1, -2))
+            matmul_qk /= math.sqrt(float(k.shape[-1]))
+            weights = F.softmax(matmul_qk, dim=-1)
+            return weights.matmul(v)
+            # Don't really know what this is doing to be honest...
             q = q.softmax(dim = -1)
             k = torch.exp(k) if self.causal else k.softmax(dim = -2)
 
