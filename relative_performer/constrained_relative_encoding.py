@@ -32,8 +32,11 @@ class LearnableSinusoidEncoding(nn.Module):
     def forward(self, x):
         sinusoid_inp = torch.matmul(
             x[..., None], self.inv_freq[None, :])
-        emb = torch.cat((sinusoid_inp.sin(), sinusoid_inp.cos()), dim=-1)
-        return emb
+        # Stack + reshape instead of concat, this way we get features of the
+        # form [sin(w_1 * x), cos(w_1 * x), sin(w_2 * x), cos(w_2 * x)] instead
+        # of [sin(w_1 * x), sin(w_2 *x), cos(w_1 * x), cos(w_2 * x)].
+        emb = torch.stack((sinusoid_inp.sin(), sinusoid_inp.cos()), dim=-1)
+        return emb.view(*emb.shape[:-2], -1)
 
 
 class ConstrainedLinear(nn.Module):
