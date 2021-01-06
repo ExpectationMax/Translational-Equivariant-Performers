@@ -71,32 +71,20 @@ class ConstrainedLinear(nn.Module):
         self.pos_scales = pos_scales
         self.heads = heads
         # Number of features per head
-        features_head = out_features // heads
         positional_features_head = 2*pos_scales
+        self.content_linear = nn.Linear(in_features, out_features)
 
-        self.content_weight = nn.Parameter(
-            torch.Tensor(out_features, in_features))
         self.alpha = nn.Parameter(
             torch.Tensor(pos_scales*heads))
         self.beta = nn.Parameter(
             torch.Tensor(pos_scales*heads))
         self.register_buffer(
             'offdiag_matrix', torch.Tensor([[0., 1.], [-1., 0.]]))
-        if bias:
-            self.bias = nn.Parameter(torch.empty(
-                1, heads, 1, features_head+positional_features_head))
-        else:
-            self.register_parameter('bias', None)
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
-        init.kaiming_uniform_(self.content_weight, a=math.sqrt(5))
         init.normal_(self.alpha)
         init.normal_(self.beta)
-        if self.bias is not None:
-            fan_in, _ = init._calculate_fan_in_and_fan_out(self.content_weight)
-            bound = 1 / math.sqrt(fan_in)
-            init.uniform_(self.bias, -bound, bound)
 
     def _build_positional_projection_matrix(self):
         """Build projection matrix for positional encodings.
@@ -120,16 +108,18 @@ class ConstrainedLinear(nn.Module):
 
     def forward(self, input: torch.Tensor, pos_encodings: torch.Tensor):
         bs = input.shape[0]
-        content_based = F.linear(input, self.content_weight)
         content_based = rearrange(
-            content_based, 'b n (h d) -> b h n d', h=self.heads)
+            self.content_linear(input),
+            'b n (h d) -> b h n d',
+            h=self.heads
+        )
         position_based = rearrange(pos_encodings, 'b n d -> b n 1 1 d')
         position_based = position_based.matmul(
             self._build_positional_projection_matrix())
         position_based = rearrange(position_based, 'b n h 1 d -> b h n d')
         return torch.cat(
             [content_based, position_based.expand(bs, -1, -1, -1)],
-            axis=-1) + self.bias
+            axis=-1)
 
 
 class IdentityLinear(nn.Module):
@@ -163,35 +153,21 @@ class IdentityLinear(nn.Module):
         self.pos_scales = pos_scales
         self.heads = heads
         # Number of features per head
-        features_head = out_features // heads
         positional_features_head = 2*pos_scales
-
-        self.content_weight = nn.Parameter(
-            torch.Tensor(out_features, in_features))
-        if bias:
-            self.bias = nn.Parameter(torch.empty(
-                1, heads, 1, features_head+positional_features_head))
-        else:
-            self.register_parameter('bias', None)
-        self.reset_parameters()
-
-    def reset_parameters(self) -> None:
-        init.kaiming_uniform_(self.content_weight, a=math.sqrt(5))
-        if self.bias is not None:
-            fan_in, _ = init._calculate_fan_in_and_fan_out(self.content_weight)
-            bound = 1 / math.sqrt(fan_in)
-            init.uniform_(self.bias, -bound, bound)
+        self.content_linear = nn.Linear(in_features, out_features)
 
     def forward(self, input: torch.Tensor, pos_encodings: torch.Tensor):
         bs = input.shape[0]
-        content_based = F.linear(input, self.content_weight)
         content_based = rearrange(
-            content_based, 'b n (h d) -> b h n d', h=self.heads)
+            self.content_linear(input),
+            'b n (h d) -> b h n d',
+            h=self.heads
+        )
         position_based = repeat(
             pos_encodings, 'b n d -> b h n d', h=self.heads)
         return torch.cat(
             [content_based, position_based.expand(bs, -1, -1, -1)
-             ], axis=-1) + self.bias
+             ], axis=-1)
 
 
 class RelPosSelfAttention(nn.Module):
