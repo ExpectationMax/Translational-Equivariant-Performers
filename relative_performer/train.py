@@ -153,7 +153,8 @@ class PerfomerBase(pl.LightningModule):
 
 class PerformerModel(PerfomerBase):
     def __init__(self, dim, depth, heads, attn_dropout=0., ff_dropout=0.,
-                 max_pos=32, **kwargs):
+                 max_pos=32, feature_redraw_interval=100, no_projection=False,
+                 **kwargs):
         super().__init__(dim=dim, **kwargs)
         self.save_hyperparameters()
         self.positional_embedding = LearnableSinusoidEncoding(
@@ -163,7 +164,9 @@ class PerformerModel(PerfomerBase):
             depth,
             heads,
             attn_dropout=attn_dropout,
-            ff_dropout=ff_dropout
+            ff_dropout=ff_dropout,
+            feature_redraw_interval=feature_redraw_interval,
+            no_projection=no_projection
         )
 
     def configure_optimizers(self):
@@ -200,12 +203,17 @@ class PerformerModel(PerfomerBase):
         parser.add_argument('--heads', type=int, default=4)
         parser.add_argument('--attn_dropout', default=0.1, type=float)
         parser.add_argument('--ff_dropout', default=0.1, type=float)
+        parser.add_argument('--feature_redraw_interval',
+                            type=int, default=1000)
+        parser.add_argument(
+            '--no_projection', default=False, action='store_true')
         return parser
 
 
 class NoposPerformerModel(PerfomerBase):
     def __init__(self, dim, depth, heads, attn_dropout=0., ff_dropout=0.,
-                 max_pos=32, **kwargs):
+                 max_pos=32, feature_redraw_interval=100, no_projection=False,
+                 **kwargs):
         super().__init__(dim=dim, **kwargs)
         self.save_hyperparameters()
         self.performer = Performer(
@@ -213,7 +221,9 @@ class NoposPerformerModel(PerfomerBase):
             depth,
             heads,
             attn_dropout=attn_dropout,
-            ff_dropout=ff_dropout
+            ff_dropout=ff_dropout,
+            feature_redraw_interval=feature_redraw_interval,
+            no_projection=no_projection
         )
 
     def configure_optimizers(self):
@@ -250,6 +260,10 @@ class NoposPerformerModel(PerfomerBase):
         parser.add_argument('--heads', type=int, default=4)
         parser.add_argument('--attn_dropout', default=0.1, type=float)
         parser.add_argument('--ff_dropout', default=0.1, type=float)
+        parser.add_argument('--feature_redraw_interval',
+                            type=int, default=1000)
+        parser.add_argument(
+            '--no_projection', default=False, action='store_true')
         return parser
 
 
