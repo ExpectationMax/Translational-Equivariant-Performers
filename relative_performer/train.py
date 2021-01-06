@@ -5,6 +5,7 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
+import torchvision.transforms as transforms
 import pytorch_lightning as pl
 import pl_bolts.datamodules as datasets
 from einops import rearrange
@@ -393,33 +394,61 @@ if __name__ == '__main__':
 
     data_cls = getattr(datasets, args.dataset + 'DataModule')
     num_workers = 4
-    transforms = ToIntTensor if args.embedding_type == 'lookup' else None
     # Handle incosistencies in DataModules: Some datasets accept batch_size,
     # some don't, some simply ignore it.
     if args.dataset == 'MNIST':
+        if args.embedding_type == 'lookup':
+            transform = transforms.Compose([
+                transforms.Resize((32, 32)),
+                ToIntTensor
+            ])
+        else:
+            transform = transforms.Compose([
+                transforms.Resize((32, 32)),
+                transforms.ToTensor()
+            ])
+
         dataset = datasets.MNISTDataModule(
             DATA_PATH.joinpath(args.dataset),
             num_workers=num_workers,
-            train_transforms=transforms,
-            val_transforms=transforms,
-            test_transforms=transforms
+            train_transforms=transform,
+            val_transforms=transform,
+            test_transforms=transform
         )
     elif args.dataset == 'FashionMNIST':
+        if args.embedding_type == 'lookup':
+            transform = transforms.Compose([
+                transforms.Resize((32, 32)),
+                ToIntTensor
+            ])
+        else:
+            transform = transforms.Compose([
+                transforms.Resize((32, 32)),
+                transforms.ToTensor()
+            ])
         dataset = datasets.FashionMNISTDataModule(
             DATA_PATH.joinpath(args.dataset),
             num_workers=num_workers,
-            train_transforms=transforms,
-            val_transforms=transforms,
-            test_transforms=transforms
+            train_transforms=transform,
+            val_transforms=transform,
+            test_transforms=transform
         )
     elif args.dataset == 'CIFAR10':
+        if args.embedding_type == 'lookup':
+            transform = ToIntTensor
+        else:
+            transform = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    (0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+            ])
         dataset = datasets.CIFAR10DataModule(
             DATA_PATH.joinpath(args.dataset),
             num_workers=num_workers,
             batch_size=args.batch_size,
-            train_transforms=transforms,
-            val_transforms=transforms,
-            test_transforms=transforms
+            train_transforms=transform,
+            val_transforms=transform,
+            test_transforms=transform
         )
 
     dataset.prepare_data()
@@ -427,6 +456,7 @@ if __name__ == '__main__':
 
     in_features, nx, ny = dataset.dims
     max_pos = max(nx, ny)
+    max_pos = 32   # We resize all inputs to 32x32
     model = model_cls(
         **vars(args),
         in_features=in_features,
