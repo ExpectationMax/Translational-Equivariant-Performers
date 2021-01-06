@@ -173,9 +173,14 @@ class PerformerModel(PerfomerBase):
             # weight_decay=0.001
         )
 
-    def forward(self, x):
+    def forward(self, x, positions=None):
         embedding = self.content_embedding(x)
-        embedding, positions = self._flatten_to_sequence(embedding)
+
+        # If positions are provided we assume the input has already been
+        # flattened
+        if positions is None:
+            embedding, positions = self._flatten_to_sequence(embedding)
+
         positions = self._compute_positional_embeddings(positions)
         embedding, positions = self._add_class_query(embedding, positions)
         embedding += positions
@@ -275,9 +280,12 @@ class RelativePerformerModel(PerfomerBase):
             # weight_decay=0.1
         )
 
-    def forward(self, x):
+    def forward(self, x, positions=None):
         embedding = self.content_embedding(x)
-        embedding, positions = self._flatten_to_sequence(embedding)
+        # If positions are provided we assume the input has already been
+        # flattened
+        if positions is None:
+            embedding, positions = self._flatten_to_sequence(embedding)
         positions = self._compute_positional_embeddings(positions)
         # First element contains class prediction
         embedding, positions = self._add_class_query(embedding, positions)
