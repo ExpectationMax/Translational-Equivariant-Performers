@@ -268,8 +268,8 @@ class NoposPerformerModel(PerfomerBase):
 
 
 class RelativePerformerModel(PerfomerBase):
-    def __init__(self, dim, depth, heads, pos_scales, pos_dims=1,
-                 attn_dropout=0., ff_dropout=0., max_pos=32,
+    def __init__(self, dim, depth, heads, pos_scales, content_rel_attn=False,
+                 pos_dims=1, attn_dropout=0., ff_dropout=0., max_pos=32,
                  feature_redraw_interval=100, no_projection=False, **kwargs):
         super().__init__(dim=dim, **kwargs)
         self.save_hyperparameters()
@@ -281,6 +281,7 @@ class RelativePerformerModel(PerfomerBase):
             heads,
             pos_dims=pos_dims,
             pos_scales=pos_scales,
+            content_rel_attn=content_rel_attn,
             attn_dropout=attn_dropout,
             ff_dropout=ff_dropout,
             feature_redraw_interval=feature_redraw_interval,
@@ -322,6 +323,10 @@ class RelativePerformerModel(PerfomerBase):
                             type=int, default=1000)
         parser.add_argument(
             '--no_projection', default=False, action='store_true')
+        parser.add_argument(
+            '--content_rel_attn', default=False, action='store_true',
+            help='Relative positional attention conditional on content'
+        )
         return parser
 
 

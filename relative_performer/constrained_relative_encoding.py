@@ -92,7 +92,7 @@ class ConstrainedLinear(nn.Module):
         """Build projection matrices for positional encodings.
 
         Returns:
-            Tensor with shape with shape [heads, pos_scales, 2, 2].
+            Tensor with shape [heads, pos_scales, 2, 2].
         """
         matrix = rearrange(
             torch.stack(
@@ -105,12 +105,21 @@ class ConstrainedLinear(nn.Module):
         return matrix
 
     def _build_conditional_projection_matrix(self, input):
+        """Build projection matrices for pos encodings conditional on content.
+
+        Args:
+            input: Tensor of shape batch_size, n, dim
+
+        Returns:
+            Tensor with shape [batch_size, heads, sequence, scales, 2, 2]
+        """
+
         parameters = rearrange(
             self.content_to_rel_matrix(input),
             'b n (h s d) -> b h n s d', d=2, h=self.heads, s=self.pos_scales)
-        alpha, beta = torch.split(parameters, 2, dim=-1)
-        matrix = torch.cat([alpha, -beta, beta, alpha], dim=-1)
-        return matrix
+        alpha, beta = torch.split(parameters, 1, dim=-1)
+        matrix = torch.cat([alpha, beta, -beta, alpha], dim=-1)
+        return matrix.view(*matrix.shape[:-1], 2, 2)
 
     def forward(self, input: torch.Tensor, pos_encodings: torch.Tensor):
         bs = input.shape[0]
@@ -119,16 +128,38 @@ class ConstrainedLinear(nn.Module):
             'b n (h d) -> b h n d',
             h=self.heads
         )
-        pos_encodings = rearrange(
+        position_based = rearrange(
             pos_encodings, 'b n (s d) -> b 1 s n d', s=self.pos_scales, d=2)
         # Format batch_size, heads, scales, instances, 2
-        position_based = pos_encodings.matmul(
+        position_based = position_based.matmul(
             self._build_positional_projection_matrix())
-        position_based = rearrange(position_based, 'b h s n d -> b h n (s d)')
+        position_based = rearrange(
+            position_based, 'b h s n d -> b h n (s d)')
 
-        return torch.cat(
-            [content_based, position_based.expand(bs, -1, -1, -1)],
-            axis=-1)
+        if not self.content_rel_attn:
+            return torch.cat(
+                [content_based, position_based.expand(bs, -1, -1, -1)],
+                axis=-1)
+        else:
+            content_based_rel = rearrange(
+                pos_encodings,
+                'b n (s d) -> b 1 n s 1 d',
+                s=self.pos_scales,
+                d=2
+            )
+            projection = self._build_conditional_projection_matrix(input)
+            content_based_rel = content_based_rel.matmul(
+                projection)
+            content_based_rel = rearrange(
+                content_based_rel, 'b h n s 1 d -> b h n (s d)')
+            return torch.cat(
+                [
+                    content_based,
+                    content_based_rel,
+                    position_based.expand(bs, -1, -1, -1)
+                ],
+                axis=-1
+            )
 
 
 class IdentityLinear(nn.Module):
@@ -143,7 +174,7 @@ class IdentityLinear(nn.Module):
     """
 
     def __init__(self, in_features, out_features, pos_scales, heads,
-                 bias=True):
+                 content_rel_attn=False, bias=True):
         """Initialize IdentityLinear layer.
 
         Args:
@@ -153,6 +184,8 @@ class IdentityLinear(nn.Module):
             n_pos_lengthscales: Number of sin/cos pairs with same lengthscale
                 in the positional encoding.
             heads: Number of heads.
+            content_rel_attn: Compute relative positional attention conditional
+                on content
             bias: Include a bias.
         """
         super().__init__()
@@ -161,6 +194,7 @@ class IdentityLinear(nn.Module):
         self.out_features = out_features
         self.pos_scales = pos_scales
         self.heads = heads
+        self.content_rel_attn = content_rel_attn
         # Number of features per head
         positional_features_head = 2*pos_scales
         self.content_linear = nn.Linear(in_features, out_features)
@@ -172,21 +206,24 @@ class IdentityLinear(nn.Module):
             'b n (h d) -> b h n d',
             h=self.heads
         )
-        position_based = repeat(
-            pos_encodings, 'b n d -> b h n d', h=self.heads)
-        return torch.cat(
-            [content_based, position_based.expand(bs, -1, -1, -1)
-             ], axis=-1)
+        pos_encodings = pos_encodings.unsqueeze(1).expand(
+            bs, self.heads, -1, -1)
+        if self.content_rel_attn:
+            pos_encodings = pos_encodings.repeat(1, 1, 1, 2)
+        return torch.cat([content_based, pos_encodings], axis=-1)
 
 
 class RelPosSelfAttention(nn.Module):
     def __init__(self, dim, causal=False, heads=8, pos_scales=4,
-                 nb_features=None, feature_redraw_interval=1000,
-                 generalized_attention=False, kernel_fn=nn.ReLU(),
-                 qr_uniform_q=False, dropout=0., no_projection=False):
+                 content_rel_attn=False, nb_features=None,
+                 feature_redraw_interval=1000, generalized_attention=False,
+                 kernel_fn=nn.ReLU(), qr_uniform_q=False, dropout=0.,
+                 no_projection=False):
         super().__init__()
         assert dim % heads == 0, 'dimension must be divisible by number of heads'
         dim_head = dim // heads + 2*pos_scales
+        if content_rel_attn:
+            dim_head += 2*pos_scales
         inner_dim = dim
         self.fast_attention = FastAttention(
             dim_head,
@@ -201,9 +238,19 @@ class RelPosSelfAttention(nn.Module):
         self.heads = heads
 
         self.to_q = ConstrainedLinear(
-            dim, inner_dim, pos_scales, self.heads)
+            dim,
+            inner_dim,
+            pos_scales,
+            self.heads,
+            content_rel_attn=content_rel_attn
+        )
         self.to_k = IdentityLinear(
-            dim, inner_dim, pos_scales, self.heads)
+            dim,
+            inner_dim,
+            pos_scales,
+            self.heads,
+            content_rel_attn=content_rel_attn
+        )
         self.to_v = nn.Linear(dim, inner_dim)
         self.to_out = nn.Linear(inner_dim, dim)
         self.dropout = nn.Dropout(dropout)
@@ -234,7 +281,7 @@ class RelPosSelfAttention(nn.Module):
 
 
 class RelativePerformer(nn.Module):
-    def __init__(self, dim, depth, heads, pos_dims=1, pos_scales=4, causal = False, ff_mult = 4, nb_features = None, feature_redraw_interval = 1000, reversible = False, ff_chunks = 1, generalized_attention = False, kernel_fn = nn.ReLU(), qr_uniform_q = False, use_scalenorm = False, use_rezero = False, ff_glu = False, ff_dropout = 0., attn_dropout = 0., cross_attend = False, no_projection = False):
+    def __init__(self, dim, depth, heads, pos_dims=1, pos_scales=4, content_rel_attn=False, causal = False, ff_mult = 4, nb_features = None, feature_redraw_interval = 1000, reversible = False, ff_chunks = 1, generalized_attention = False, kernel_fn = nn.ReLU(), qr_uniform_q = False, use_scalenorm = False, use_rezero = False, ff_glu = False, ff_dropout = 0., attn_dropout = 0., cross_attend = False, no_projection = False):
         super().__init__()
         layers = nn.ModuleList([])
 
