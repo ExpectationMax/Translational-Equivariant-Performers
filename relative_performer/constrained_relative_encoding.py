@@ -32,8 +32,11 @@ class LearnableSinusoidEncoding(nn.Module):
     def forward(self, x):
         sinusoid_inp = torch.matmul(
             x[..., None], self.inv_freq[None, :])
-        emb = torch.cat((sinusoid_inp.sin(), sinusoid_inp.cos()), dim=-1)
-        return emb
+        # Stack + reshape instead of concat, this way we get features of the
+        # form [sin(w_1 * x), cos(w_1 * x), sin(w_2 * x), cos(w_2 * x)] instead
+        # of [sin(w_1 * x), sin(w_2 *x), cos(w_1 * x), cos(w_2 * x)].
+        emb = torch.stack((sinusoid_inp.sin(), sinusoid_inp.cos()), dim=-1)
+        return emb.view(*emb.shape[:-2], -1)
 
 
 class ConstrainedLinear(nn.Module):
@@ -43,12 +46,11 @@ class ConstrainedLinear(nn.Module):
     of the input associated with content of input elements, yet applies
     a constrained linear operation on the dimensions associated with positional
     embeddings.
-
-    This constraint ensures that the position information the network has
     access to is purely relative.
     """
 
     def __init__(self, in_features, out_features, pos_scales, heads,
+                 content_rel_attn=False,
                  bias=True):
         """Initialize ConstrainedLinear layer.
 
@@ -67,66 +69,97 @@ class ConstrainedLinear(nn.Module):
         self.out_features = out_features
         self.pos_scales = pos_scales
         self.heads = heads
+        self.content_rel_attn = content_rel_attn
         # Number of features per head
-        features_head = out_features // heads
         positional_features_head = 2*pos_scales
+        self.content_linear = nn.Linear(in_features, out_features)
+        if self.content_rel_attn:
+            self.content_to_rel_matrix = nn.Linear(in_features, 2*heads*pos_scales)
 
-        self.content_weight = nn.Parameter(
-            torch.Tensor(out_features, in_features))
         self.alpha = nn.Parameter(
             torch.Tensor(pos_scales*heads))
         self.beta = nn.Parameter(
             torch.Tensor(pos_scales*heads))
         self.register_buffer(
             'offdiag_matrix', torch.Tensor([[0., 1.], [-1., 0.]]))
-        if bias:
-            self.bias = nn.Parameter(torch.empty(
-                1, heads, 1, features_head+positional_features_head))
-        else:
-            self.register_parameter('bias', None)
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
-        init.kaiming_uniform_(self.content_weight, a=math.sqrt(5))
         init.normal_(self.alpha)
         init.normal_(self.beta)
-        if self.bias is not None:
-            fan_in, _ = init._calculate_fan_in_and_fan_out(self.content_weight)
-            bound = 1 / math.sqrt(fan_in)
-            init.uniform_(self.bias, -bound, bound)
 
     def _build_positional_projection_matrix(self):
-        """Build projection matrix for positional encodings.
+        """Build projection matrices for positional encodings.
 
         Returns:
-            Block diagonal matrix with shape [heads, pos_scales,
-            pos_scales].
+            Tensor with shape [heads, pos_scales, 2, 2].
         """
-        device = self.alpha.device
-        n_parameters = self.alpha.numel()
-        identity_matrix = torch.diag(torch.ones(2, device=device))
-        matrices = (
-            self.alpha[:, None, None] * identity_matrix[None]
-            + self.beta[:, None, None] * self.offdiag_matrix[None]
+        matrix = rearrange(
+            torch.stack(
+                [self.alpha, self.beta, -self.beta, self.alpha], dim=-1),
+            '(h s) (b1 b2) -> h s b1 b2',
+            h=self.heads,
+            s=self.pos_scales,
+            b1=2, b2=2
         )
-        return torch.stack([
-            torch.block_diag(*matrices[i:i+(1*self.pos_scales)])
-            for i in range(
-                0, n_parameters, self.pos_scales)
-        ], axis=0)
+        return matrix
+
+    def _build_conditional_projection_matrix(self, input):
+        """Build projection matrices for pos encodings conditional on content.
+
+        Args:
+            input: Tensor of shape batch_size, n, dim
+
+        Returns:
+            Tensor with shape [batch_size, heads, sequence, scales, 2, 2]
+        """
+
+        parameters = rearrange(
+            self.content_to_rel_matrix(input),
+            'b n (h s d) -> b h n s d', d=2, h=self.heads, s=self.pos_scales)
+        alpha, beta = torch.split(parameters, 1, dim=-1)
+        matrix = torch.cat([alpha, beta, -beta, alpha], dim=-1)
+        return matrix.view(*matrix.shape[:-1], 2, 2)
 
     def forward(self, input: torch.Tensor, pos_encodings: torch.Tensor):
         bs = input.shape[0]
-        content_based = F.linear(input, self.content_weight)
         content_based = rearrange(
-            content_based, 'b n (h d) -> b h n d', h=self.heads)
-        position_based = rearrange(pos_encodings, 'b n d -> b n 1 1 d')
+            self.content_linear(input),
+            'b n (h d) -> b h n d',
+            h=self.heads
+        )
+        position_based = rearrange(
+            pos_encodings, 'b n (s d) -> b 1 s n d', s=self.pos_scales, d=2)
+        # Format batch_size, heads, scales, instances, 2
         position_based = position_based.matmul(
             self._build_positional_projection_matrix())
-        position_based = rearrange(position_based, 'b n h 1 d -> b h n d')
-        return torch.cat(
-            [content_based, position_based.expand(bs, -1, -1, -1)],
-            axis=-1) + self.bias
+        position_based = rearrange(
+            position_based, 'b h s n d -> b h n (s d)')
+
+        if not self.content_rel_attn:
+            return torch.cat(
+                [content_based, position_based.expand(bs, -1, -1, -1)],
+                axis=-1)
+        else:
+            content_based_rel = rearrange(
+                pos_encodings,
+                'b n (s d) -> b 1 n s 1 d',
+                s=self.pos_scales,
+                d=2
+            )
+            projection = self._build_conditional_projection_matrix(input)
+            content_based_rel = content_based_rel.matmul(
+                projection)
+            content_based_rel = rearrange(
+                content_based_rel, 'b h n s 1 d -> b h n (s d)')
+            return torch.cat(
+                [
+                    content_based,
+                    content_based_rel,
+                    position_based.expand(bs, -1, -1, -1)
+                ],
+                axis=-1
+            )
 
 
 class IdentityLinear(nn.Module):
@@ -141,7 +174,7 @@ class IdentityLinear(nn.Module):
     """
 
     def __init__(self, in_features, out_features, pos_scales, heads,
-                 bias=True):
+                 content_rel_attn=False, bias=True):
         """Initialize IdentityLinear layer.
 
         Args:
@@ -151,6 +184,8 @@ class IdentityLinear(nn.Module):
             n_pos_lengthscales: Number of sin/cos pairs with same lengthscale
                 in the positional encoding.
             heads: Number of heads.
+            content_rel_attn: Compute relative positional attention conditional
+                on content
             bias: Include a bias.
         """
         super().__init__()
@@ -159,46 +194,36 @@ class IdentityLinear(nn.Module):
         self.out_features = out_features
         self.pos_scales = pos_scales
         self.heads = heads
+        self.content_rel_attn = content_rel_attn
         # Number of features per head
-        features_head = out_features // heads
         positional_features_head = 2*pos_scales
-
-        self.content_weight = nn.Parameter(
-            torch.Tensor(out_features, in_features))
-        if bias:
-            self.bias = nn.Parameter(torch.empty(
-                1, heads, 1, features_head+positional_features_head))
-        else:
-            self.register_parameter('bias', None)
-        self.reset_parameters()
-
-    def reset_parameters(self) -> None:
-        init.kaiming_uniform_(self.content_weight, a=math.sqrt(5))
-        if self.bias is not None:
-            fan_in, _ = init._calculate_fan_in_and_fan_out(self.content_weight)
-            bound = 1 / math.sqrt(fan_in)
-            init.uniform_(self.bias, -bound, bound)
+        self.content_linear = nn.Linear(in_features, out_features)
 
     def forward(self, input: torch.Tensor, pos_encodings: torch.Tensor):
         bs = input.shape[0]
-        content_based = F.linear(input, self.content_weight)
         content_based = rearrange(
-            content_based, 'b n (h d) -> b h n d', h=self.heads)
-        position_based = repeat(
-            pos_encodings, 'b n d -> b h n d', h=self.heads)
-        return torch.cat(
-            [content_based, position_based.expand(bs, -1, -1, -1)
-             ], axis=-1) + self.bias
+            self.content_linear(input),
+            'b n (h d) -> b h n d',
+            h=self.heads
+        )
+        pos_encodings = pos_encodings.unsqueeze(1).expand(
+            bs, self.heads, -1, -1)
+        if self.content_rel_attn:
+            pos_encodings = pos_encodings.repeat(1, 1, 1, 2)
+        return torch.cat([content_based, pos_encodings], axis=-1)
 
 
 class RelPosSelfAttention(nn.Module):
     def __init__(self, dim, causal=False, heads=8, pos_scales=4,
-                 nb_features=None, feature_redraw_interval=1000,
-                 generalized_attention=False, kernel_fn=nn.ReLU(),
-                 qr_uniform_q=False, dropout=0., no_projection=False):
+                 content_rel_attn=False, nb_features=None,
+                 feature_redraw_interval=1000, generalized_attention=False,
+                 kernel_fn=nn.ReLU(), qr_uniform_q=False, dropout=0.,
+                 no_projection=False):
         super().__init__()
         assert dim % heads == 0, 'dimension must be divisible by number of heads'
         dim_head = dim // heads + 2*pos_scales
+        if content_rel_attn:
+            dim_head += 2*pos_scales
         inner_dim = dim
         self.fast_attention = FastAttention(
             dim_head,
@@ -213,9 +238,19 @@ class RelPosSelfAttention(nn.Module):
         self.heads = heads
 
         self.to_q = ConstrainedLinear(
-            dim, inner_dim, pos_scales, self.heads)
+            dim,
+            inner_dim,
+            pos_scales,
+            self.heads,
+            content_rel_attn=content_rel_attn
+        )
         self.to_k = IdentityLinear(
-            dim, inner_dim, pos_scales, self.heads)
+            dim,
+            inner_dim,
+            pos_scales,
+            self.heads,
+            content_rel_attn=content_rel_attn
+        )
         self.to_v = nn.Linear(dim, inner_dim)
         self.to_out = nn.Linear(inner_dim, dim)
         self.dropout = nn.Dropout(dropout)
@@ -246,7 +281,7 @@ class RelPosSelfAttention(nn.Module):
 
 
 class RelativePerformer(nn.Module):
-    def __init__(self, dim, depth, heads, pos_dims=1, pos_scales=4, causal = False, ff_mult = 4, nb_features = None, feature_redraw_interval = 1000, reversible = False, ff_chunks = 1, generalized_attention = False, kernel_fn = nn.ReLU(), qr_uniform_q = False, use_scalenorm = False, use_rezero = False, ff_glu = False, ff_dropout = 0., attn_dropout = 0., cross_attend = False, no_projection = False):
+    def __init__(self, dim, depth, heads, pos_dims=1, pos_scales=4, content_rel_attn=False, causal = False, ff_mult = 4, nb_features = None, feature_redraw_interval = 1000, reversible = False, ff_chunks = 1, generalized_attention = False, kernel_fn = nn.ReLU(), qr_uniform_q = False, use_scalenorm = False, use_rezero = False, ff_glu = False, ff_dropout = 0., attn_dropout = 0., cross_attend = False, no_projection = False):
         super().__init__()
         layers = nn.ModuleList([])
 
