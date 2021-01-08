@@ -407,6 +407,10 @@ if __name__ == '__main__':
         model_cls = ClippedRelativePerformerModel
     args = parser.parse_args()
 
+    seed = pl.utilities.seed.seed_everything()
+    print('Running with random seed: {}'.format(seed))
+    args.seed = seed
+
     data_cls = getattr(datasets, args.dataset + 'DataModule')
     num_workers = 4
     # Handle incosistencies in DataModules: Some datasets accept batch_size,
@@ -509,7 +513,8 @@ if __name__ == '__main__':
         gpus=-1 if GPU_AVAILABLE else None,
         gradient_clip_val=0.5,  # Same as performer paper
         logger=logger,
-        callbacks=[model_checkpoint_cb, early_stopping_cb, lr_monitor]
+        callbacks=[model_checkpoint_cb, early_stopping_cb, lr_monitor],
+        accelerator='ddp'
     )
 
     # Handle incosistencies in DataModules: Some datasets only listen to the
