@@ -17,6 +17,8 @@ from relative_performer.performer_pytorch import Performer
 from relative_performer.clipped_relative_attention import ClippedRelativePerformer
 from relative_performer.constrained_relative_encoding import (
     RelativePerformer, LearnableSinusoidEncoding)
+from relative_performer.training_utils import (
+    get_constant_schedule_with_warmup, get_noam_schedule)
 
 GPU_AVAILABLE = torch.cuda.is_available() and torch.cuda.device_count() > 0
 DATA_PATH = Path(__file__).parent.parent.joinpath('data')
@@ -28,7 +30,7 @@ class PerfomerBase(pl.LightningModule):
     positional_embedding: nn.Module
 
     def __init__(self, in_features, dim, num_classes,
-                 embedding_type, **kwargs):
+                 embedding_type, learning_rate, warmup, schedule, **kwargs):
         super().__init__()
         self.in_features = in_features
         self.dim = dim
@@ -113,6 +115,29 @@ class PerfomerBase(pl.LightningModule):
         )
         return embedding, pos_embedding
 
+    def configure_optimizers(self):
+        optim = torch.optim.Adam(
+            self.parameters(),
+            self.hparams.learning_rate,
+            betas=[0.9, 0.98],
+            # weight_decay=0.1
+        )
+        if self.hparams.warmup != 0:
+            if self.hparams.schedule == 'linear':
+                scheduler = get_constant_schedule_with_warmup(
+                    optim, self.hparams.warmup)
+            elif self.hparams.schedule == 'noam':
+                scheduler = get_noam_schedule(
+                    optim, self.hparams.warmup)
+            scheduler = {
+                'scheduler': scheduler,
+                'interval': 'step',
+                'frequency': 1
+            }
+            return [optim], [scheduler]
+        else:
+            return optim
+
     def training_step(self, batch, batch_idx):
         x, y = batch
         # The datasets always input in the format (C, W, H) instead of (W, H,
@@ -150,6 +175,16 @@ class PerfomerBase(pl.LightningModule):
         self.log('test/acc', self.test_acc, on_epoch=True)
         return loss
 
+    @classmethod
+    def add_model_specific_args(cls, parent_parser):
+        parser = argparse.ArgumentParser(
+            parents=[parent_parser], add_help=False)
+        parser.add_argument('--learning_rate', default=0.001, type=float)
+        parser.add_argument('--warmup', default=0, type=int)
+        parser.add_argument('--schedule', default='constant',
+                            choices=['constant', 'noam'])
+        return parser
+
 
 class PerformerModel(PerfomerBase):
     def __init__(self, dim, depth, heads, attn_dropout=0., ff_dropout=0.,
@@ -169,14 +204,6 @@ class PerformerModel(PerfomerBase):
             no_projection=no_projection
         )
 
-    def configure_optimizers(self):
-        return torch.optim.Adam(
-            self.parameters(),
-            self.hparams.learning_rate,
-            betas=[0.9, 0.98],
-            # weight_decay=0.001
-        )
-
     def forward(self, x, positions=None):
         embedding = self.content_embedding(x)
 
@@ -193,11 +220,9 @@ class PerformerModel(PerfomerBase):
         out = self.performer(embedding)[:, 0]
         return self.output_layer(out)
 
-    @staticmethod
-    def add_model_specific_args(parent_parser):
-        parser = argparse.ArgumentParser(
-            parents=[parent_parser], add_help=False)
-        parser.add_argument('--learning_rate', default=0.001, type=float)
+    @classmethod
+    def add_model_specific_args(cls, parent_parser):
+        parser = super().add_model_specific_args(parent_parser)
         parser.add_argument('--dim', type=int, default=128)
         parser.add_argument('--depth', type=int, default=4)
         parser.add_argument('--heads', type=int, default=4)
@@ -226,14 +251,6 @@ class NoposPerformerModel(PerfomerBase):
             no_projection=no_projection
         )
 
-    def configure_optimizers(self):
-        return torch.optim.Adam(
-            self.parameters(),
-            self.hparams.learning_rate,
-            betas=[0.9, 0.98],
-            # weight_decay=0.1
-        )
-
     def forward(self, x):
         embedding = self.content_embedding(x)
         embedding = rearrange(embedding, 'b x y d -> b (x y) d')
@@ -250,11 +267,9 @@ class NoposPerformerModel(PerfomerBase):
         out = self.performer(embedding)[:, 0]
         return self.output_layer(out)
 
-    @ staticmethod
-    def add_model_specific_args(parent_parser):
-        parser = argparse.ArgumentParser(
-            parents=[parent_parser], add_help=False)
-        parser.add_argument('--learning_rate', default=0.001, type=float)
+    @classmethod
+    def add_model_specific_args(cls, parent_parser):
+        parser = super().add_model_specific_args(parent_parser)
         parser.add_argument('--dim', type=int, default=128)
         parser.add_argument('--depth', type=int, default=4)
         parser.add_argument('--heads', type=int, default=4)
@@ -288,14 +303,6 @@ class RelativePerformerModel(PerfomerBase):
             no_projection=no_projection
         )
 
-    def configure_optimizers(self):
-        return torch.optim.Adam(
-            self.parameters(),
-            self.hparams.learning_rate,
-            betas=[0.9, 0.98],
-            # weight_decay=0.1
-        )
-
     def forward(self, x, positions=None):
         embedding = self.content_embedding(x)
         # If positions are provided we assume the input has already been
@@ -308,11 +315,9 @@ class RelativePerformerModel(PerfomerBase):
         out = self.performer(embedding, positions)[:, 0]
         return self.output_layer(out)
 
-    @ staticmethod
-    def add_model_specific_args(parent_parser):
-        parser = argparse.ArgumentParser(
-            parents=[parent_parser], add_help=False)
-        parser.add_argument('--learning_rate', default=0.001, type=float)
+    @classmethod
+    def add_model_specific_args(cls, parent_parser):
+        parser = super().add_model_specific_args(parent_parser)
         parser.add_argument('--dim', type=int, default=128)
         parser.add_argument('--depth', type=int, default=4)
         parser.add_argument('--heads', type=int, default=4)
@@ -341,14 +346,6 @@ class ClippedRelativePerformerModel(PerfomerBase):
             max_rel_dist=max_rel_dist
         )
 
-    def configure_optimizers(self):
-        return torch.optim.Adam(
-            self.parameters(),
-            self.hparams.learning_rate,
-            betas=[0.9, 0.98],
-            # weight_decay=0.1
-        )
-
     def forward(self, x):
         embedding = self.content_embedding(x)
         embedding = rearrange(embedding, 'b x y d -> b (x y) d')
@@ -369,7 +366,6 @@ class ClippedRelativePerformerModel(PerfomerBase):
     def add_model_specific_args(parent_parser):
         parser = argparse.ArgumentParser(
             parents=[parent_parser], add_help=False)
-        parser.add_argument('--learning_rate', default=0.001, type=float)
         parser.add_argument('--dim', type=int, default=128)
         parser.add_argument('--depth', type=int, default=4)
         parser.add_argument('--heads', type=int, default=4)
@@ -507,12 +503,13 @@ if __name__ == '__main__':
     early_stopping_cb = pl.callbacks.EarlyStopping(
         monitor='val/acc', patience=20, mode='max', strict=True,
         verbose=1)
+    lr_monitor = pl.callbacks.LearningRateMonitor('step')
 
     trainer = pl.Trainer(
         gpus=-1 if GPU_AVAILABLE else None,
         gradient_clip_val=0.5,  # Same as performer paper
         logger=logger,
-        callbacks=[model_checkpoint_cb, early_stopping_cb]
+        callbacks=[model_checkpoint_cb, early_stopping_cb, lr_monitor]
     )
 
     # Handle incosistencies in DataModules: Some datasets only listen to the
