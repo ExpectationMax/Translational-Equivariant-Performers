@@ -169,9 +169,9 @@ def relative_attention(q, rpe, v):
     q_rel_sparse[:,:,:,indices] = q_rel
 
     q_max_dist = torch.einsum('...ij,j->...i', q, max_dist_enc)
-    D_inv =  1. / torch.einsum('...ij,ij->...i', q, torch.stack([(diffs == torch.zeros_like(diffs)+i).count_nonzero(dim=1) for i in range(max_rel_dist+1)]).type(torch.float).T @ (rpe - max_dist_enc) + max_dist_enc * L)
+    D_inv =  1. / (q @ (max_dist_enc * L) + q_rel_sparse.sum(dim=-1))
     out = torch.einsum('...i,...j->...ij', q_max_dist, v_sum) + torch.einsum('...ij,...ijk->...ik', q_rel_sparse, v_unfolded) 
-    out = torch.einsum('...ij,...i->...ij', out, D_inv)
+    out = out * D_inv.unsqueeze(-1)
     return out
 
 
