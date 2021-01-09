@@ -20,21 +20,24 @@ def cnt_blck(img):
     col_sum = torch.sum(img[0], dim = 1)
     zero_col = (col_sum == 0).type(torch.float)
     
+    
+    # cond. statements are due to insensivity of first_diff to changes in the
+    # very first and very last position of the tensor
     if zero_col[0][0] == 0:
         very_left = 0
     if zero_col[0][1] == 0 and zero_col[0][0] != 0:
-        very_left = 1
+        very_left = 1 # second left
     
     if zero_col[0][no_cols - 1] == 0:
         very_right = 0
     if zero_col[0][no_cols - 2] == 0 and zero_col[0][no_cols - 1] != 0:
-        very_right = 1
+        very_right = 1 # second right
     
     first_diff = (zero_col[0][1:] - zero_col[0][:-1])
     col_idx = (first_diff != 0).nonzero() + 1 # deprecated, replace me
     
     if len(col_idx) == 1 and 'very_left' in locals():
-        return (very_left, (no_cols - col_idx[1]).item())
+        return (very_left, (no_cols - col_idx[len(col_idx) - 1]).item())
     
     if len(col_idx) == 1 and 'very_right' in locals():
         return (col_idx[0].item(), very_right)
@@ -43,8 +46,36 @@ def cnt_blck(img):
 
 ### CHECK
 #
-#transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0], [1])])
-#train_data = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transform)
+transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0], [1])])
+train_data = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transform)
 #
-#cnt_blck(train_data[0])
-#cnt_blck(train_data[615])
+## train_data[29] # how to handle?
+#
+#cnt_blck(train_data[0]) # regular
+#
+#cnt_blck(train_data[1416]) # one left
+#cnt_blck(train_data[1322]) # none left
+#
+#cnt_blck(train_data[109]) # one right
+#cnt_blck(train_data[615]) # none right
+
+# extract only the ones with label '1'
+ones_only = []
+for idx in range(len(train_data)):
+    if train_data[idx][1] == 1:
+        ones_only.append(train_data[idx])
+len(ones_only) # 6742
+
+ones_only_cnt_blck_left = []
+ones_only_cnt_blck_right = []
+for idx in range(len(ones_only)):
+    res = cnt_blck(ones_only[idx])
+    ones_only_cnt_blck_left.append(res[0])
+    ones_only_cnt_blck_right.append(res[1])
+
+fig, ax = plt.subplots(1,2)
+ax[0].hist(ones_only_cnt_blck_left, alpha = 0.5, color = 'r')
+ax[1].hist(ones_only_cnt_blck_right, alpha = 0.5, color = 'g')
+plt.show()
+
+
