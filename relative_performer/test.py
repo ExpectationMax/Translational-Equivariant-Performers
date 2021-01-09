@@ -8,6 +8,7 @@ import pandas as pd
 
 import torchvision.transforms as transforms
 import pytorch_lightning as pl
+from pytorch_lightning.core.memory import ModelSummary
 import pl_bolts.datamodules as datasets
 import relative_performer.train as train_module
 from relative_performer.train import DATA_PATH, ToIntTensor, GPU_AVAILABLE
@@ -124,13 +125,16 @@ def test_run(directory: Path):
     )
     val_results = trainer.test(model, test_dataloaders=val_loader)[0]
     test_results = trainer.test(model, test_dataloaders=test_loader)[0]
+    summary = ModelSummary(model, 'top')
+    n_params = sum(summary.param_nums)
     result = {
         **hparams,
         **{
             key.replace('test', 'val'): float(value)
             for key, value in val_results.items()
         },
-        **{key: float(value) for key, value in test_results.items()}
+        **{key: float(value) for key, value in test_results.items()},
+        'n_parameters': n_params
     }
     return result
 
