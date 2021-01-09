@@ -97,6 +97,8 @@ def get_model_class_and_hparams(directory: Path):
         hparams['schedule'] = 'constant'
     if 'warmup' not in hparams.keys():
         hparams['warmup'] = 0
+    if 'content_rel_attn' not in hparams.keys():
+        hparams['content_rel_attn'] = False
 
     return model_cls, hparams
 
