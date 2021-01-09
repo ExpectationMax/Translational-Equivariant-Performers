@@ -10,7 +10,7 @@ import torchvision.transforms as transforms
 import pytorch_lightning as pl
 import pl_bolts.datamodules as datasets
 import relative_performer.train as train_module
-from relative_performer.train import DATA_PATH, ToIntTensor
+from relative_performer.train import DATA_PATH, ToIntTensor, GPU_AVAILABLE
 
 
 class NoCheckpointFoundException(Exception):
@@ -116,7 +116,10 @@ def test_run(directory: Path):
     checkpoint = get_checkpoint_path(directory)
 
     model = model_cls.load_from_checkpoint(checkpoint, **hparams)
-    trainer = pl.Trainer(logger=False)
+    trainer = pl.Trainer(
+        gpus=-1 if GPU_AVAILABLE else None,
+        logger=False
+    )
     test_results = trainer.test(model, test_dataloaders=test_loader)[0]
     result = {**hparams, **{key: float(value)
                             for key, value in test_results.items()}}
