@@ -17,7 +17,7 @@ class NoCheckpointFoundException(Exception):
     pass
 
 
-def get_test_dataloader(hparams):
+def get_val_and_test_dataloader(hparams):
     """Get the dataloader for the test split from the hyperparameters."""
     num_workers = 4
     # Handle incosistencies in DataModules: Some datasets accept batch_size,
@@ -77,10 +77,12 @@ def get_test_dataloader(hparams):
             test_transforms=transform
         )
     try:
+        val_loader = dataset.val_dataloader(batch_size=hparams['batch_size'])
         test_loader = dataset.test_dataloader(batch_size=hparams['batch_size'])
     except TypeError:
+        val_loader = dataset.val_dataloader()
         test_loader = dataset.test_dataloader()
-    return test_loader
+    return val_loader, test_loader
 
 
 def get_model_class_and_hparams(directory: Path):
@@ -112,7 +114,7 @@ def get_checkpoint_path(directory: Path):
 
 def test_run(directory: Path):
     model_cls, hparams = get_model_class_and_hparams(directory)
-    test_loader = get_test_dataloader(hparams)
+    val_loader, test_loader = get_val_and_test_dataloader(hparams)
     checkpoint = get_checkpoint_path(directory)
 
     model = model_cls.load_from_checkpoint(checkpoint, **hparams)
@@ -120,9 +122,16 @@ def test_run(directory: Path):
         gpus=-1 if GPU_AVAILABLE else None,
         logger=False
     )
+    val_results = trainer.test(model, test_dataloaders=val_loader)[0]
     test_results = trainer.test(model, test_dataloaders=test_loader)[0]
-    result = {**hparams, **{key: float(value)
-                            for key, value in test_results.items()}}
+    result = {
+        **hparams,
+        **{
+            key.replace('test', 'val'): float(value)
+            for key, value in val_results.items()
+        },
+        **{key: float(value) for key, value in test_results.items()}
+    }
     return result
 
 
