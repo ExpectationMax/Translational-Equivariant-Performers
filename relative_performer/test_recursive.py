@@ -2,6 +2,7 @@
 """Test runs in a nested folder structure and combine results into a csv."""
 import argparse
 from pathlib import Path
+from glob import glob
 
 import pandas as pd
 
@@ -16,11 +17,12 @@ if __name__ == '__main__':
     run_dirs = Path(args.run_dirs)
 
     data = []
-    for hparam_file in run_dirs.rglob('hparams.yaml'):
+    # Need to use glob instead of Path.rglob as it does not follow symlinks
+    for hparam_file in glob(str(run_dirs.joinpath('**','hparams.yaml')), recursive=True):
         try:
-            run_dir = hparam_file.parent
+            run_dir = Path(hparam_file).parent
             results = test_run(run_dir)
-            data.append(pd.DataFrame(results, index=[run_dir]))
+            data.append(pd.DataFrame(results, index=[str(run_dir)]))
         except NoCheckpointFoundException:
             pass
 
