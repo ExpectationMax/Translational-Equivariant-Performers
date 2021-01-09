@@ -15,7 +15,7 @@ class ClippedRelativeSelfAttention(nn.Module):
     def __init__(self, dim, causal=False, heads=8,
                  nb_features=None, feature_redraw_interval=1000,
                  generalized_attention=False, kernel_fn=nn.ReLU(),
-                 qr_uniform_q=False, dropout=0., no_projection=False, max_rel_dist=4):
+                 qr_uniform_q=False, dropout=0., no_projection=False, clipping_dist=4):
         super().__init__()
         assert dim % heads == 0, 'dimension must be divisible by number of heads'
         dim_head = dim // heads 
@@ -39,7 +39,7 @@ class ClippedRelativeSelfAttention(nn.Module):
         self.content_heads = content_heads
 
         self.to_q = nn.Linear(dim, inner_dim)
-        self.rpe = nn.Parameter(torch.zeros((max_rel_dist+1, dim_head)))
+        self.rpe = nn.Parameter(torch.zeros((clipping_dist+1, dim_head)))
         self.to_v = nn.Linear(dim, inner_dim)
         self.to_k = nn.Linear(dim, content_inner_dim) # k will only be used in content heads
         self.to_out = nn.Linear(inner_dim, dim)
@@ -136,7 +136,7 @@ class RelativeFastAttention(nn.Module):
 
 
 def relative_attention(q, rpe, v):
-    max_rel_dist = rpe.shape[0]-1
+    clipping_dist = rpe.shape[0]-1
     v_sum = v.sum(dim=-2)
     max_dist_enc = rpe[-1]
     max_dist = rpe.shape[0] -1
@@ -152,18 +152,18 @@ def relative_attention(q, rpe, v):
     y_pos = y_diffs+torch.cat([torch.arange(img_dim).repeat_interleave(img_dim).unsqueeze(0).T, torch.zeros((1,1), dtype=torch.long)+img_dim])
     diffs = torch.abs(x_diffs) + torch.abs(y_diffs)
     valid = torch.logical_and(torch.logical_and(torch.logical_and(x_pos >=0, x_pos < img_dim), torch.logical_and(y_pos >=0, y_pos < img_dim)), diffs<max_dist)
-    diffs[valid != True] = max_rel_dist
+    diffs[valid != True] = clipping_dist
 
     q_dot_rpe = q @ (rpe - max_dist_enc).T
     q_idx = torch.arange(0,diffs.shape[0]).unsqueeze(1).expand_as(diffs)
     q_rel = q_dot_rpe[:,:,q_idx, diffs]
     q_rel[:,:,valid != True] = 0
 
-    rel_window = (max_rel_dist-1)*img_dim+max_rel_dist-1
+    rel_window = (clipping_dist-1)*img_dim+clipping_dist-1
     v_padded = torch.zeros((batch_size, heads, rel_window*2 + L, v.shape[-1]), device=q.device)
     v_padded[:,:,rel_window:rel_window+L,:] = v
     v_unfolded = v_padded.unfold(2,rel_window*2+1,1).permute(0,1,2,4,3)
-    indices = (torch.arange(0,max_rel_dist*2-1).repeat(max_rel_dist*2-1) + torch.arange(0,(max_rel_dist*2-1)*10, 10).repeat_interleave(max_rel_dist*2-1))
+    indices = (torch.arange(0,clipping_dist*2-1).repeat(clipping_dist*2-1) + torch.arange(0,(clipping_dist*2-1)*10, 10).repeat_interleave(clipping_dist*2-1))
     # TODO: make sparse tensor
     q_rel_sparse = torch.zeros((batch_size, heads, L, rel_window*2+1), device=q.device)
     q_rel_sparse[:,:,:,indices] = q_rel
@@ -176,7 +176,7 @@ def relative_attention(q, rpe, v):
 
 
 class ClippedRelativePerformer(nn.Module):
-    def __init__(self, dim, depth, heads, max_rel_dist=8, causal = False, ff_mult = 4, nb_features = None, feature_redraw_interval = 1000, reversible = False, ff_chunks = 1, generalized_attention = False, kernel_fn = nn.ReLU(), qr_uniform_q = False, use_scalenorm = False, use_rezero = False, ff_glu = False, ff_dropout = 0., attn_dropout = 0., cross_attend = False, no_projection = False):
+    def __init__(self, dim, depth, heads, clipping_dist=8, causal = False, ff_mult = 4, nb_features = None, feature_redraw_interval = 1000, reversible = False, ff_chunks = 1, generalized_attention = False, kernel_fn = nn.ReLU(), qr_uniform_q = False, use_scalenorm = False, use_rezero = False, ff_glu = False, ff_dropout = 0., attn_dropout = 0., cross_attend = False, no_projection = False):
         super().__init__()
         layers = nn.ModuleList([])
 
@@ -198,7 +198,7 @@ class ClippedRelativePerformer(nn.Module):
                         qr_uniform_q=qr_uniform_q,
                         dropout=attn_dropout,
                         no_projection=no_projection,
-                        max_rel_dist=max_rel_dist)),
+                        clipping_dist=clipping_dist)),
                 wrapper_fn(
                     Chunk(
                         ff_chunks,
