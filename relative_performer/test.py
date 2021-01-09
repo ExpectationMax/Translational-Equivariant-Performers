@@ -13,6 +13,10 @@ import relative_performer.train as train_module
 from relative_performer.train import DATA_PATH, ToIntTensor
 
 
+class NoCheckpointFoundException(Exception):
+    pass
+
+
 def get_test_dataloader(hparams):
     """Get the dataloader for the test split from the hyperparameters."""
     num_workers = 4
@@ -67,7 +71,7 @@ def get_test_dataloader(hparams):
         dataset = datasets.CIFAR10DataModule(
             DATA_PATH.joinpath(hparams['dataset']),
             num_workers=num_workers,
-            batch_size=args.batch_size,
+            batch_size=hparams['batch_size'],
             train_transforms=transform,
             val_transforms=transform,
             test_transforms=transform
@@ -99,9 +103,22 @@ def get_model_class_and_hparams(directory: Path):
 
 def get_checkpoint_path(directory: Path):
     checkpoints = list(directory.joinpath('checkpoints').glob('*.ckpt'))
-    if len(checkpoints) != 1:
-        raise RuntimeError('No checkpoint or more than one checkpoint found.')
+    if len(checkpoints) == 0:
+        raise NoCheckpointFoundException()
     return checkpoints[0]
+
+
+def test_run(directory: Path):
+    model_cls, hparams = get_model_class_and_hparams(directory)
+    test_loader = get_test_dataloader(hparams)
+    checkpoint = get_checkpoint_path(directory)
+
+    model = model_cls.load_from_checkpoint(checkpoint, **hparams)
+    trainer = pl.Trainer(logger=False)
+    test_results = trainer.test(model, test_dataloaders=test_loader)[0]
+    result = {**hparams, **{key: float(value)
+                            for key, value in test_results.items()}}
+    return result
 
 
 if __name__ == '__main__':
@@ -110,14 +127,5 @@ if __name__ == '__main__':
     parser.add_argument('--output', type=str, required=True)
 
     args = parser.parse_args()
-
-    model_cls, hparams = get_model_class_and_hparams(args.run_dir)
-    test_loader = get_test_dataloader(hparams)
-    checkpoint = get_checkpoint_path(args.run_dir)
-
-    model = model_cls.load_from_checkpoint(checkpoint, **hparams)
-    trainer = pl.Trainer(logger=False, limit_test_batches=5)
-    test_results = trainer.test(model, test_dataloaders=test_loader)[0]
-    result = {**hparams, **{key: float(value)
-                            for key, value in test_results.items()}}
+    result = test_run(args.run_dir)
     pd.Series(result).to_csv(args.output)
