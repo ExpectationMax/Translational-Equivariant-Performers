@@ -163,15 +163,14 @@ def relative_attention(q, rpe, v):
     v_padded = torch.zeros((batch_size, heads, rel_window*2 + L, v.shape[-1]), device=q.device)
     v_padded[:,:,rel_window:rel_window+L,:] = v
     v_unfolded = v_padded.unfold(2,rel_window*2+1,1).permute(0,1,2,4,3)
-    indices = (torch.arange(0,clipping_dist*2-1).repeat(clipping_dist*2-1) + torch.arange(0,(clipping_dist*2-1)*10, 10).repeat_interleave(clipping_dist*2-1))
-    # TODO: make sparse tensor
-    q_rel_sparse = torch.zeros((batch_size, heads, L, rel_window*2+1), device=q.device)
-    q_rel_sparse[:,:,:,indices] = q_rel
 
     q_max_dist = torch.einsum('...ij,j->...i', q, max_dist_enc)
-    D_inv =  1. / (q @ (max_dist_enc * L) + q_rel_sparse.sum(dim=-1))
-    out = torch.einsum('...i,...j->...ij', q_max_dist, v_sum) + torch.einsum('...ij,...ijk->...ik', q_rel_sparse, v_unfolded) 
-    out = out * D_inv.unsqueeze(-1)
+    out = torch.einsum('...i,...j->...ij', q_max_dist, v_sum)
+    local_dim = (clipping_dist*2-1)
+    for i in range(local_dim):
+        out += torch.einsum('...ij,...ijk->...ik', q_rel.narrow(-1, i*local_dim, local_dim), v_unfolded.narrow(-2,img_dim*i,local_dim))
+    D_inv =  1. / (q @ (max_dist_enc * L) + q_rel.sum(dim=-1))
+    out = out *  D_inv.unsqueeze(-1)
     return out
 
 
