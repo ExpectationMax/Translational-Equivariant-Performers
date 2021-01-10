@@ -63,8 +63,8 @@ len(ones_only) # 6742
 
 ### CHECK
 
-#def plot_it(im_g):
-#    return plt.imshow(torch.reshape(im_g[0],(28,28)), cmap='gray', interpolation='none')
+def plot_it(im_g):
+    return plt.imshow(torch.reshape(im_g[0],(28,28)), cmap='gray', interpolation='none')
 
 #plot_it(ones_only[0])
 #plot_it(shift_image(ones_only[0], shft_int = 3))
@@ -74,3 +74,57 @@ len(ones_only) # 6742
 ## 615 from train_data contains non-zeros on the very right column
 #plot_it(train_data[615])
 #plot_it(shft_train_dat[615])
+
+### More general implementation of shift_image()
+
+def shift_img(img, shft_int = 1):
+    """
+    Shifts the pixels of an object within a grayscale image either 'shft_int' 
+    pixels to the left or right depending on the sign of 'shft_int'.
+    
+    Input: 'img' tuple with a torch tensor and an integer,
+           'shft_int' no. of pixels to shift along x-axis
+    Output: tuple with a shifted torch tensor and an unmodified integer
+        
+    """
+    no_cols = img[0].shape[1]
+    lst_col =  no_cols - 1
+    col_sty = no_cols - abs(shft_int)
+
+    # shift object to the left
+    if shft_int < 0:
+        shft_int = abs(shft_int)
+        col_idx = torch.cat([torch.ones(shft_int, dtype = torch.bool),
+                             torch.zeros(col_sty, dtype = torch.bool)])
+        cols = torch.reshape(img[0][0,:,col_idx], (no_cols,shft_int))
+        cols_sum = torch.sum(cols)
+        inval_shft = torch.is_nonzero(cols_sum)
+        if inval_shft:
+            raise ValueError('Consider shifting to the right for this image.')
+        mod_img = torch.cat([img[0][0,:,~col_idx],cols], dim = 1)
+        mod_img = torch.reshape(mod_img, (1,mod_img.shape[0], mod_img.shape[1]))
+        mod_img = (mod_img,img[1])
+        return mod_img
+    
+    # shift object to right
+    col_idx = torch.cat([torch.zeros(col_sty, dtype = torch.bool),
+                         torch.ones(shft_int, dtype = torch.bool)])
+    cols = torch.reshape(img[0][0,:,col_idx], (no_cols,shft_int))
+    cols_sum = torch.sum(cols)
+    inval_shft = torch.is_nonzero(cols_sum)
+    if inval_shft:
+        raise ValueError('Consider shifting to the left for this image.')
+    
+    mod_img = torch.cat([cols,img[0][0,:,~col_idx]], dim = 1)
+    mod_img = torch.reshape(mod_img, (1,mod_img.shape[0], mod_img.shape[1]))
+    mod_img = (mod_img,img[1])
+    
+    return mod_img
+
+### CHECK
+#
+#img = train_data[0]
+#plot_it(img)
+#plot_it(shift_img(img, shft_int = 5))
+#plot_it(shift_img(img, shft_int = -3))
+#plot_it(shift_img(img, shft_int = 3))
