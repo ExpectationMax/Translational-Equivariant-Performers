@@ -48,6 +48,7 @@ def cnt_blck(img):
 #
 transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0], [1])])
 train_data = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transform)
+test_data = torchvision.datasets.MNIST(root='./data', train=False, download=True, transform=transform)
 #
 ## train_data[29] # how to handle?
 #
@@ -59,23 +60,33 @@ train_data = torchvision.datasets.MNIST(root='./data', train=True, download=True
 #cnt_blck(train_data[109]) # one right
 #cnt_blck(train_data[615]) # none right
 
-# extract only the ones with label '1'
+# extract only the ones with label '1' from test
 ones_only = []
-for idx in range(len(train_data)):
+for idx in range(len(test_data)):
     if train_data[idx][1] == 1:
-        ones_only.append(train_data[idx])
-len(ones_only) # 6742
+        ones_only.append(test_data[idx])
+len(ones_only) # 1127
 
-ones_only_cnt_blck_left = []
-ones_only_cnt_blck_right = []
+def plot_it(im_g):
+    return plt.imshow(torch.reshape(im_g[0],(28,28)), cmap='gray', interpolation='none')
+
+#ones_only_cnt_blck_left = []
+#ones_only_cnt_blck_right = []
+space_ones = []
 for idx in range(len(ones_only)):
     res = cnt_blck(ones_only[idx])
-    ones_only_cnt_blck_left.append(res[0])
-    ones_only_cnt_blck_right.append(res[1])
+    if res[0] >= 10 and res[1] >= 10: # more than 10 pixels to the left and right
+        space_ones.append(ones_only[idx])
+    #ones_only_cnt_blck_left.append(res[0])
+    #ones_only_cnt_blck_right.append(res[1])
+    
+len(space_ones) # 63
+    
+plot_it(space_ones[0])
 
-fig, ax = plt.subplots(1,2)
-ax[0].hist(ones_only_cnt_blck_left, alpha = 0.5, color = 'r')
-ax[1].hist(ones_only_cnt_blck_right, alpha = 0.5, color = 'g')
-plt.show()
+#fig, ax = plt.subplots(1,2)
+#ax[0].hist(ones_only_cnt_blck_left, alpha = 0.5, color = 'r')
+#ax[1].hist(ones_only_cnt_blck_right, alpha = 0.5, color = 'g')
+#plt.show()
 
 
