@@ -121,7 +121,8 @@ def test_run(directory: Path):
     model = model_cls.load_from_checkpoint(checkpoint, **hparams)
     trainer = pl.Trainer(
         gpus=-1 if GPU_AVAILABLE else None,
-        logger=False
+        logger=False,
+        accelerator='ddp'
     )
     val_results = trainer.test(model, test_dataloaders=val_loader)[0]
     test_results = trainer.test(model, test_dataloaders=test_loader)[0]
