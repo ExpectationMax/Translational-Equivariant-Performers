@@ -36,37 +36,11 @@ def get_suitable_digits(dataset, class_id, min_shift):
         if y != class_id:
             return False
 
-        no_cols = img.shape[1]
-        col_sum = torch.sum(img, dim=1)
-        zero_col = (col_sum == 0).type(torch.float)
-
-        # cond. statements are due to insensivity of first_diff to changes in
-        # the very first and very last position of the tensor
-        very_left = -1
-        if zero_col[0, 0] == 0:
-            very_left = 0
-        elif zero_col[0, 1] == 0:
-            very_left = 1  # second left
-
-        very_right = -1
-        if zero_col[0, no_cols - 1] == 0:
-            very_right = 0
-        elif zero_col[0, no_cols - 2] == 0:
-            very_right = 1  # second right
-
-        first_diff = (zero_col[0, 1:] - zero_col[0, :-1])
-        col_idx = (first_diff != 0).nonzero(
-            as_tuple=False) + 1
-
-        if len(col_idx) == 1 and very_left != -1:
-            n_shifts_left = very_left
-            n_shifts_right = int((no_cols - col_idx[len(col_idx) - 1]).item())
-        elif len(col_idx) == 1 and very_right != -1:
-            n_shifts_left = int(col_idx[0].item())
-            n_shifts_right = very_right
-        else:
-            n_shifts_left = int(col_idx[0].item())
-            n_shifts_right = int((no_cols - col_idx[1]).item())
+        col_with_nonzero_values = torch.any(img[0] != 0., dim=0).int()
+        # Get first non zero element from both sides
+        n_shifts_left = torch.argmax(col_with_nonzero_values) - 1
+        n_shifts_right = torch.argmax(
+            col_with_nonzero_values.flip(dims=[0])) - 1
 
         if n_shifts_left >= min_shift and n_shifts_right >= min_shift:
             return True
@@ -80,7 +54,6 @@ def get_suitable_digits(dataset, class_id, min_shift):
 
 def get_shifting_dataset(dataset_name, class_id, min_shift):
     """Get the dataloader for the test split from the hyperparameters."""
-    num_workers = 4
     if dataset_name == 'MNIST':
         transform = transforms.Compose([
             transforms.Resize((32, 32)),
