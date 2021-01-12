@@ -30,10 +30,10 @@ class TransformedDataset(Dataset):
         return self.dataset.__len__()
 
 
-def get_suitable_digits(dataset, class_id, min_shift):
+def get_suitable_digits(dataset, class_ids, min_shift):
     def is_suitable(instance):
         img, y = instance
-        if y != class_id:
+        if y not in class_ids:
             return False
 
         col_with_nonzero_values = torch.any(img[0] != 0., dim=0).int()
@@ -110,9 +110,9 @@ class ShiftingTransform:
             return torch.cat([rest_of_image, cut_off_pixels], dim=-1), y
 
 
-def test_run(directory: Path, class_id, min_shift):
+def test_run(directory: Path, class_ids, min_shift):
     model_cls, hparams = get_model_class_and_hparams(directory)
-    dataset = get_shifting_dataset(hparams['dataset'], class_id, min_shift)
+    dataset = get_shifting_dataset(hparams['dataset'], class_ids, min_shift)
     checkpoint = get_checkpoint_path(directory)
 
     model = model_cls.load_from_checkpoint(checkpoint, **hparams)
@@ -139,8 +139,8 @@ def test_run(directory: Path, class_id, min_shift):
 
     results = []
     with torch.no_grad():
-        for shift in tqdm.trange(
-                -min_shift, min_shift+1, position=0, desc='shifts'):
+        # tqdm.trange(-min_shift, min_shift+1, position=0, desc='shifts'):
+        for shift in [3, 4, 5]:
             cur_res = {'shift': shift}
             shifted_data = TransformedDataset(
                 dataset, ShiftingTransform(shift))
@@ -180,7 +180,7 @@ def test_run(directory: Path, class_id, min_shift):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('run_dirs', type=Path, nargs='+')
-    parser.add_argument('--label', type=int, default=1)
+    parser.add_argument('--labels', type=int, default=[1], nargs='+')
     parser.add_argument('--min_shift', type=int, default=10)
     parser.add_argument('--output', type=str, required=True)
 
@@ -188,7 +188,7 @@ if __name__ == '__main__':
     results = []
     for run_dir in args.run_dirs:
         print(run_dir)
-        result = test_run(run_dir, args.label, args.min_shift)
+        result = test_run(run_dir, args.labels, args.min_shift)
         result['run_dir'] = run_dir
         results.append(result)
     results = pd.concat(results, ignore_index=True)
