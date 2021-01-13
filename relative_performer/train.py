@@ -21,6 +21,7 @@ from relative_performer.training_utils import (
     get_constant_schedule_with_warmup, get_noam_schedule)
 
 GPU_AVAILABLE = torch.cuda.is_available() and torch.cuda.device_count() > 0
+GPU_COUNT = 0 if not torch.cuda.is_available() else torch.cuda.device_count()
 DATA_PATH = Path(__file__).parent.parent.joinpath('data')
 
 
@@ -178,7 +179,7 @@ class PerfomerBase(pl.LightningModule):
     @classmethod
     def add_model_specific_args(cls, parent_parser):
         parser = argparse.ArgumentParser(
-            parents=[parent_parser], add_help=False)
+            parents=[parent_parser], add_help=True)
         parser.add_argument('--learning_rate', default=0.001, type=float)
         parser.add_argument('--warmup', default=0, type=int)
         parser.add_argument('--schedule', default='constant',
@@ -375,20 +376,28 @@ class ClippedRelativePerformerModel(PerfomerBase):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('model', choices=['Performer', 'RelativePerformer',
-                                          'NoposPerformer', 'ClippedRelativePerformer'])
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(
+        'model',
+        choices=['Performer', 'RelativePerformer',
+                 'NoposPerformer', 'ClippedRelativePerformer'],
+        help='The model to train'
+    )
     parser.add_argument('dataset', choices=[
-        'FashionMNIST', 'MNIST', 'CIFAR10'])
-    parser.add_argument('--log_path', type=str, default='lightning_logs')
-    parser.add_argument('--exp_name', type=str, default='default')
-    parser.add_argument('--version', type=str, default=None)
-
-    parser.add_argument('--batch_size', default=16, type=int)
+        'FashionMNIST', 'MNIST', 'CIFAR10'], help='The dataset to train on')
+    parser.add_argument(
+        '--log_path', type=str, default='lightning_logs', help='Logging path')
+    parser.add_argument('--exp_name', type=str, default='default',
+                        help='Experiment name')
+    parser.add_argument('--version', type=str, default=None,
+                        help='Version of experiment')
+    parser.add_argument('--batch_size', default=16, type=int,
+                        help='Batch size used for training.')
     parser.add_argument(
         '--embedding_type',
         default='linear',
-        choices=['linear', 'MLP', 'lookup']
+        choices=['linear', 'MLP', 'lookup'],
+        help='Embedding type used to embed pixel values (default: linear)'
     )
 
     partial_args, _ = parser.parse_known_args()
@@ -513,7 +522,7 @@ if __name__ == '__main__':
         gradient_clip_val=0.5,  # Same as performer paper
         logger=logger,
         callbacks=[model_checkpoint_cb, early_stopping_cb, lr_monitor],
-        accelerator='ddp'
+        accelerator='ddp' if GPU_COUNT > 1 else None
     )
 
     # Handle incosistencies in DataModules: Some datasets only listen to the

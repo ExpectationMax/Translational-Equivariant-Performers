@@ -25,55 +25,119 @@ train the model.
 ```bash
 $ poetry run relative_performer/train.py --help
 
-usage: train.py [-h] [--batch_size BATCH_SIZE] [--learning_rate LEARNING_RATE]
-                [--dim DIM] [--depth DEPTH] [--heads HEADS]
-                [--pos_scales POS_SCALES]
-                {FashionMNIST,MNIST,CIFAR10,TinyCIFAR10}
+usage: train.py [-h] [--log_path LOG_PATH] [--exp_name EXP_NAME]
+                [--version VERSION] [--batch_size BATCH_SIZE]
+                [--embedding_type {linear,MLP,lookup}]
+                {Performer,RelativePerformer,NoposPerformer,ClippedRelativePerformer}
+                {FashionMNIST,MNIST,CIFAR10}
 
 positional arguments:
-  {FashionMNIST,MNIST,CIFAR10,TinyCIFAR10}
+  {Performer,RelativePerformer,NoposPerformer,ClippedRelativePerformer}
+                        The model to train
+  {FashionMNIST,MNIST,CIFAR10}
+                        The dataset to train on
 
 optional arguments:
   -h, --help            show this help message and exit
+  --log_path LOG_PATH   Logging path
+  --exp_name EXP_NAME   Experiment name
+  --version VERSION     Version of experiment
   --batch_size BATCH_SIZE
+                        Batch size used for training.
+  --embedding_type {linear,MLP,lookup}
+                        Embedding type used to embed pixel values (default:
+                        linear)
+```
+
+The logs of successful runs will be stored in the path
+`<log_path>/<exp_name>/<version>`. If `--version` is not explicitly defined it
+will automatically be set to the pattern `version_X`  where `X` is
+automatically incremented for each run. By default (if no command line
+parameters are provided) the path is `lighting_logs/default/version_X`.
+
+Missing datasets will automatically be downloaded to the path
+`<project_root>/data`.
+
+
+### Model specific arguments
+Each model can additionally have specific arguments associated which may also
+be defined via the command line
+
+```bash
+$ poetry run relative_performer/train.py Performer MNIST --help
+
+usage: train.py [-h] [--log_path LOG_PATH] [--exp_name EXP_NAME]
+                [--version VERSION] [--batch_size BATCH_SIZE]
+                [--embedding_type {linear,MLP,lookup}]
+                [--learning_rate LEARNING_RATE] [--warmup WARMUP]
+                [--schedule {constant,noam}] [--dim DIM] [--depth DEPTH]
+                [--heads HEADS] [--attn_dropout ATTN_DROPOUT]
+                [--ff_dropout FF_DROPOUT]
+                [--feature_redraw_interval FEATURE_REDRAW_INTERVAL]
+                [--no_projection]
+                {Performer,RelativePerformer,NoposPerformer,ClippedRelativePerformer}
+                {FashionMNIST,MNIST,CIFAR10}
+
+positional arguments:
+  {Performer,RelativePerformer,NoposPerformer,ClippedRelativePerformer}
+                        The model to train
+  {FashionMNIST,MNIST,CIFAR10}
+                        The dataset to train on
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --log_path LOG_PATH   Logging path
+  --exp_name EXP_NAME   Experiment name
+  --version VERSION     Version of experiment
+  --batch_size BATCH_SIZE
+                        Batch size used for training.
+  --embedding_type {linear,MLP,lookup}
+                        Embedding type used to embed pixel values (default:
+                        linear)
   --learning_rate LEARNING_RATE
+  --warmup WARMUP
+  --schedule {constant,noam}
   --dim DIM
   --depth DEPTH
   --heads HEADS
-  --pos_scales POS_SCALES
+  --attn_dropout ATTN_DROPOUT
+  --ff_dropout FF_DROPOUT
+  --feature_redraw_interval FEATURE_REDRAW_INTERVAL
+  --no_projection
 ```
 
-This script should be extended to also support other types of models.
-
-The logs of successful runs will be stored in the path
-`lighting_logs/version_X` where `X` is automatically incremented for each run
-and missing datasets will automatically be downloaded to the path
-`<project_root>/data`.
+Which shows that the `Performer` model additionally supports the arguments
+`--learning_rate`, `--dim`, `--depth` and `--heads` etc.
 
 ### Example - Training on MNIST
-Training the relative performer model on MNIST with default parameters can be
+Training the performer model on MNIST with default parameters can be
 achieved using the command below:
 
 ```bash
 $ poetry run relative_performer/train.py MNIST
+
+No correct seed found, seed set to 2111136583
 GPU available: False, used: False
 TPU available: None, using: 0 TPU cores
 
   | Name                 | Type                      | Params
 -------------------------------------------------------------------
-0 | positional_embedding | LearnableSinusoidEncoding | 4
-1 | content_embedding    | Linear                    | 256
-2 | performer            | RelativePerformer         | 793 K
-3 | output_layer         | Linear                    | 1.3 K
-4 | loss                 | CrossEntropyLoss          | 0
-5 | train_acc            | Accuracy                  | 0
-6 | val_acc              | Accuracy                  | 0
+0 | content_embedding    | Linear                    | 256   
+1 | output_layer         | Linear                    | 1.3 K 
+2 | loss                 | CrossEntropyLoss          | 0     
+3 | train_acc            | Accuracy                  | 0     
+4 | val_acc              | Accuracy                  | 0     
+5 | test_acc             | Accuracy                  | 0     
+6 | positional_embedding | LearnableSinusoidEncoding | 32    
+7 | performer            | Performer                 | 793 K 
 -------------------------------------------------------------------
-795 K     Trainable params
+794 K     Trainable params
 0         Non-trainable params
-795 K     Total params
-Epoch 0:   1%|▊    | 13/1874 [01:07<2:40:57,  5.19s/it, loss=2.72, v_num=11, train_acc_step=0.125]
-
+794 K     Total params
+Running with random seed: 2111136583
+Called log hparams
+Validation sanity check: 100%|██████████| 2/2 [00:03<00:00,  1.55s/it]
+Training: Epoch 0:   0%|          | 2/3749 [00:10<5:14:18,  5.03s/it, loss=3.22, v_num=38, train/acc_step=0.0625]
 ```
 
 
