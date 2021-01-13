@@ -136,6 +136,7 @@ class RelativeFastAttention(nn.Module):
 
 
 def relative_attention(q, rpe, v):
+    dev = q.device
     clipping_dist = rpe.shape[0]-1
     v_sum = v.sum(dim=-2)
     max_dist_enc = rpe[-1]
@@ -146,21 +147,21 @@ def relative_attention(q, rpe, v):
     batch_size = q.shape[0]
     heads = q.shape[1]
 
-    x_diffs = torch.arange(-max_dist+1, max_dist).repeat(max_dist*2-1).expand(L, -1)
-    y_diffs = torch.arange(-max_dist+1, max_dist).repeat_interleave(max_dist*2-1).expand(L, -1)
-    x_pos = x_diffs+torch.cat([torch.arange(img_dim).repeat(img_dim).unsqueeze(0).T, torch.zeros((1,1), dtype=torch.long)])
-    y_pos = y_diffs+torch.cat([torch.arange(img_dim).repeat_interleave(img_dim).unsqueeze(0).T, torch.zeros((1,1), dtype=torch.long)+img_dim])
+    x_diffs = torch.arange(-max_dist+1, max_dist, device=dev).repeat(max_dist*2-1).expand(L, -1)
+    y_diffs = torch.arange(-max_dist+1, max_dist, device=dev).repeat_interleave(max_dist*2-1).expand(L, -1)
+    x_pos = x_diffs+torch.cat([torch.arange(img_dim, device=dev).repeat(img_dim).unsqueeze(0).T, torch.zeros((1,1), dtype=torch.long)])
+    y_pos = y_diffs+torch.cat([torch.arange(img_dim, device=dev).repeat_interleave(img_dim).unsqueeze(0).T, torch.zeros((1,1), dtype=torch.long)+img_dim])
     diffs = torch.abs(x_diffs) + torch.abs(y_diffs)
     valid = torch.logical_and(torch.logical_and(torch.logical_and(x_pos >=0, x_pos < img_dim), torch.logical_and(y_pos >=0, y_pos < img_dim)), diffs<max_dist)
     diffs[valid != True] = clipping_dist
 
     q_dot_rpe = q @ (rpe - max_dist_enc).T
-    q_idx = torch.arange(0,diffs.shape[0]).unsqueeze(1).expand_as(diffs)
+    q_idx = torch.arange(0,diffs.shape[0], device=dev).unsqueeze(1).expand_as(diffs)
     q_rel = q_dot_rpe[:,:,q_idx, diffs]
     q_rel[:,:,valid != True] = 0
 
     rel_window = (clipping_dist-1)*img_dim+clipping_dist-1
-    v_padded = torch.zeros((batch_size, heads, rel_window*2 + L, v.shape[-1]), device=q.device)
+    v_padded = torch.zeros((batch_size, heads, rel_window*2 + L, v.shape[-1]), device=dev)
     v_padded[:,:,rel_window:rel_window+L,:] = v
     v_unfolded = v_padded.unfold(2,rel_window*2+1,1).permute(0,1,2,4,3)
 
