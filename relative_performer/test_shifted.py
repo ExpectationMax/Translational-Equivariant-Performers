@@ -139,8 +139,7 @@ def test_run(directory: Path, class_ids, min_shift):
 
     results = []
     with torch.no_grad():
-        # tqdm.trange(-min_shift, min_shift+1, position=0, desc='shifts'):
-        for shift in [3, 4, 5]:
+        for shift in tqdm.trange(-min_shift, min_shift+1, position=0, desc='shifts'):
             cur_res = {'shift': shift}
             shifted_data = TransformedDataset(
                 dataset, ShiftingTransform(shift))
