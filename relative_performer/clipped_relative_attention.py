@@ -149,8 +149,8 @@ def relative_attention(q, rpe, v):
 
     x_diffs = torch.arange(-max_dist+1, max_dist, device=dev).repeat(max_dist*2-1).expand(L, -1)
     y_diffs = torch.arange(-max_dist+1, max_dist, device=dev).repeat_interleave(max_dist*2-1).expand(L, -1)
-    x_pos = x_diffs+torch.cat([torch.arange(img_dim, device=dev).repeat(img_dim).unsqueeze(0).T, torch.zeros((1,1), dtype=torch.long)])
-    y_pos = y_diffs+torch.cat([torch.arange(img_dim, device=dev).repeat_interleave(img_dim).unsqueeze(0).T, torch.zeros((1,1), dtype=torch.long)+img_dim])
+    x_pos = x_diffs+torch.cat([torch.arange(img_dim, device=dev).repeat(img_dim).unsqueeze(0).T, torch.zeros((1,1), dtype=torch.long, device=dev)])
+    y_pos = y_diffs+torch.cat([torch.arange(img_dim, device=dev).repeat_interleave(img_dim).unsqueeze(0).T, torch.zeros((1,1), dtype=torch.long, device=dev)+img_dim])
     diffs = torch.abs(x_diffs) + torch.abs(y_diffs)
     valid = torch.logical_and(torch.logical_and(torch.logical_and(x_pos >=0, x_pos < img_dim), torch.logical_and(y_pos >=0, y_pos < img_dim)), diffs<max_dist)
     diffs[valid != True] = clipping_dist
