@@ -9,7 +9,8 @@ Most of the code regarding the Performer model implementations can be found in
 the subfolder `relative_performer`.  Jupyter notebooks with experiments and
 exploratory analysis can be found in the folder `notebooks`.  The pipeline for
 training the CNNs can be found in the folder `CNN`. The raw results
-used for in our work can be found in the folder `results`.
+used for in our work can be found in the folder `results`.  Pretrained models
+can be downloaded [here](https://drive.google.com/file/d/1oVAIa9vMv7g3KGfZ6VkjoGqiEqj6p3D2/view?usp=sharing).
 
 ## Models
 The code implements the following models:
