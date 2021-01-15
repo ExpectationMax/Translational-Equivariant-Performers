@@ -1,1 +1,3 @@
 from relative_performer.performer_pytorch import PerformerLM, Performer, FastAttention, SelfAttention
+from relative_performer.constrained_relative_encoding import RelativePerformer
+from relative_performer.clipped_relative_attention import ClippedRelativePerformer
