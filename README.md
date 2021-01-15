@@ -1,5 +1,8 @@
 # RelativePerformer
-Relative Encoding of `Performer` architecture.
+Relative Encoding of `Performer` architecture. Parts of this code are based on
+the implementation available [here](https://github.com/lucidrains/performer-pytorch).
+Files which were taken from this repository retain the authors original
+copyright notice.
 
 ## Installation
 Install [poetry](https://python-poetry.org/docs/#installation) in a python
