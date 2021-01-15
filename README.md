@@ -4,6 +4,25 @@ the implementation available [here](https://github.com/lucidrains/performer-pyto
 Files which were taken from this repository retain the authors original
 copyright notice.
 
+## Structure of the project, results and trained models
+Most of the code regarding the Performer model implementations can be found in
+the subfolder `relative_performer`.  Jupyter notebooks with experiments and
+exploratory analysis can be found in the folder `notebooks`.  The pipeline for
+training the CNNs can be found in the folder `CNN`. The raw results
+used for in our work can be found in the folder `results`.
+
+## Models
+The code implements the following models:
+
+ - `Performer`: Performer model with absolute positional encodings and without
+   any further modifications
+ - `NoPosPerformer`: Performer model without any positional encodings.
+ [-](-.md) `RelativePerformer`: Adapted Performer model using constrained weight
+   matrices for projection of positional embeddings (corresponding to *strategy
+   1 of the paper*)
+ - `ClippedRelativePerformer`: Adapted Performer model which directly learns
+   relative positional embeddings (corresponding to *strategy 2 of the paper*)
+
 ## Installation
 Install [poetry](https://python-poetry.org/docs/#installation) in a python
 environment with python version larger than $3.7$.
@@ -20,7 +39,7 @@ poetry install --dev
 You can then enter the virtual environment using `poetry shell` or run commands
 inside the virtual environment using `poetry run <command>`.
 
-## Usage
+## Training
 The main script for training models is `relative_performer/train.py`, it allows
 to define training and model parameters and the dataset that should be used to
 train the model.
@@ -143,4 +162,64 @@ Validation sanity check: 100%|██████████| 2/2 [00:03<00:00, 
 Training: Epoch 0:   0%|          | 2/3749 [00:10<5:14:18,  5.03s/it, loss=3.22, v_num=38, train/acc_step=0.0625]
 ```
 
+## Testing
+After a model is run its performance can be evaluated on the test split of the
+dataset. This is implemented in the files `relative_performer/test.py` and
+`relative_performer/test_recursive.py`, where the former tests a single model
+and the latter traverses a directory testing all trained models it finds in
+the hierarchy.  In both cases the `--output` argument expects a path to a csv
+file where the results should be stored.
 
+```bash
+$ poetry run relative_performer/test.py
+
+usage: test.py [-h] --output OUTPUT run_dir
+
+positional arguments:
+  run_dir
+
+optional arguments:
+  -h, --help       show this help message and exit
+  --output OUTPUT
+
+$ poetry run relative_performer/test_recursive.py
+
+usage: test_recursive.py [-h] [--output OUTPUT] run_dirs
+
+positional arguments:
+  run_dirs
+
+optional arguments:
+  -h, --help       show this help message and exit
+  --output OUTPUT
+```
+
+## Testing shifted images
+As an additional means of evaluating the models the script
+`relative_performer/test_shifted.py` tests the model on a subset of shifted
+versions of the datasets.  This script currently only supports being applied to
+runs from either MNIST or FashionMNIST. The option `--min_shift` determines the
+shifting range in pixels. The performance is only evaluated on digits that
+support the full span of shifts of min_shift pixels to the left and to the
+right.  `--labels` allows to filter the classes which should be shifted. In our
+experiments this was always set to 1 as it allowed the maximal amount of shift
+for both MNIST and FashionMNIST.  Finally, `--output` expects a path to a csv
+file for storing the results and `run_dirs` expects a list of multiple folders
+containing runs on which the object shift experiment should be run.
+
+```bash
+$ poetry run relative_performer/test_shifted.py --help
+
+usage: test_shifted.py [-h] [--labels LABELS [LABELS ...]]
+                       [--min_shift MIN_SHIFT] --output OUTPUT
+                       run_dirs [run_dirs ...]
+
+positional arguments:
+  run_dirs
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --labels LABELS [LABELS ...]
+  --min_shift MIN_SHIFT
+  --output OUTPUT
+```
