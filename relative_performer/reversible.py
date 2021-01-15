@@ -1,3 +1,27 @@
+"""From https://github.com/lucidrains/performer-pytorch
+
+MIT License
+
+Copyright (c) 2020 Phil Wang
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+"""
 import torch
 import torch.nn as nn
 from operator import itemgetter
@@ -5,6 +29,8 @@ from torch.autograd.function import Function
 from torch.utils.checkpoint import get_device_states, set_device_states
 
 # for routing arguments into the functions of the reversible layer
+
+
 def route_args(router, args, depth):
     routed_args = [(dict(), dict()) for _ in range(depth)]
     matched_keys = [key for key in args.keys() if key in router]
@@ -12,11 +38,15 @@ def route_args(router, args, depth):
     for key in matched_keys:
         val = args[key]
         for depth, ((f_args, g_args), routes) in enumerate(zip(routed_args, router[key])):
-            new_f_args, new_g_args = map(lambda route: ({key: val} if route else {}), routes)
-            routed_args[depth] = ({**f_args, **new_f_args}, {**g_args, **new_g_args})
+            new_f_args, new_g_args = map(lambda route: (
+                {key: val} if route else {}), routes)
+            routed_args[depth] = ({**f_args, **new_f_args},
+                                  {**g_args, **new_g_args})
     return routed_args
 
 # following example for saving and setting rng here https://pytorch.org/docs/stable/_modules/torch/utils/checkpoint.html
+
+
 class Deterministic(nn.Module):
     def __init__(self, net):
         super().__init__()
@@ -32,7 +62,7 @@ class Deterministic(nn.Module):
             self.cuda_in_fwd = True
             self.gpu_devices, self.gpu_states = get_device_states(*args)
 
-    def forward(self, *args, record_rng = False, set_rng = False, **kwargs):
+    def forward(self, *args, record_rng=False, set_rng=False, **kwargs):
         if record_rng:
             self.record_rng(*args)
 
@@ -51,13 +81,15 @@ class Deterministic(nn.Module):
 
 # heavily inspired by https://github.com/RobinBruegger/RevTorch/blob/master/revtorch/revtorch.py
 # once multi-GPU is confirmed working, refactor and send PR back to source
+
+
 class ReversibleBlock(nn.Module):
     def __init__(self, f, g):
         super().__init__()
         self.f = Deterministic(f)
         self.g = Deterministic(g)
 
-    def forward(self, x, f_args = {}, g_args = {}):
+    def forward(self, x, f_args={}, g_args={}):
         x1, x2 = torch.chunk(x, 2, dim=2)
         y1, y2 = None, None
 
@@ -67,7 +99,7 @@ class ReversibleBlock(nn.Module):
 
         return torch.cat([y1, y2], dim=2)
 
-    def backward_pass(self, y, dy, f_args = {}, g_args = {}):
+    def backward_pass(self, y, dy, f_args={}, g_args={}):
         y1, y2 = torch.chunk(y, 2, dim=2)
         del y
 
@@ -105,6 +137,7 @@ class ReversibleBlock(nn.Module):
 
         return x, dx
 
+
 class _ReversibleFunction(Function):
     @staticmethod
     def forward(ctx, x, blocks, args):
@@ -123,10 +156,12 @@ class _ReversibleFunction(Function):
             y, dy = block.backward_pass(y, dy, **kwargs)
         return dy, None, None
 
+
 class SequentialSequence(nn.Module):
-    def __init__(self, layers, args_route = {}):
+    def __init__(self, layers, args_route={}):
         super().__init__()
-        assert all(len(route) == len(layers) for route in args_route.values()), 'each argument route map must have the same depth as the number of sequential layers'
+        assert all(len(route) == len(layers) for route in args_route.values(
+        )), 'each argument route map must have the same depth as the number of sequential layers'
         self.layers = layers
         self.args_route = args_route
 
@@ -139,11 +174,13 @@ class SequentialSequence(nn.Module):
             x = x + g(x, **g_args)
         return x
 
+
 class ReversibleSequence(nn.Module):
-    def __init__(self, blocks, args_route = {}):
+    def __init__(self, blocks, args_route={}):
         super().__init__()
         self.args_route = args_route
-        self.blocks = nn.ModuleList([ReversibleBlock(f=f, g=g) for f, g in blocks])
+        self.blocks = nn.ModuleList(
+            [ReversibleBlock(f=f, g=g) for f, g in blocks])
 
     def forward(self, x, **kwargs):
         x = torch.cat([x, x], dim=-1)
@@ -152,5 +189,5 @@ class ReversibleSequence(nn.Module):
         args = route_args(self.args_route, kwargs, len(blocks))
         args = list(map(lambda x: {'f_args': x[0], 'g_args': x[1]}, args))
 
-        out =  _ReversibleFunction.apply(x, blocks, args)
+        out = _ReversibleFunction.apply(x, blocks, args)
         return torch.stack(out.chunk(2, dim=-1)).sum(dim=0)

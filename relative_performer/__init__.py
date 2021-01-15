@@ -1,2 +1,1 @@
 from relative_performer.performer_pytorch import PerformerLM, Performer, FastAttention, SelfAttention
-from relative_performer.autoregressive_wrapper import AutoregressiveWrapper
