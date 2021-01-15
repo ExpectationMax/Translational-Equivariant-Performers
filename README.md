@@ -136,7 +136,7 @@ Training the performer model on MNIST with default parameters can be
 achieved using the command below:
 
 ```bash
-$ poetry run relative_performer/train.py MNIST
+$ poetry run relative_performer/train.py Performer MNIST
 
 No correct seed found, seed set to 2111136583
 GPU available: False, used: False
