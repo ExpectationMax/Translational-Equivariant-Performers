@@ -2,7 +2,7 @@
 Code of the paper [Translational Equivariance in Kernelizable Attention](https://arxiv.org/abs/2102.07680).
 It contains two implementations of translational equivariance in the `Performer`
 kernelizable attention architecture. Parts of this code are based on the
-implementation of the Performer architecture by `lucidrains` available
+implementation of the Performer architecture by [lucidrains](https://github.com/lucidrains) available
 [here](https://github.com/lucidrains/performer-pytorch).
 Files which were taken from this repository retain the authors original
 copyright notice.
