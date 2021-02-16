@@ -1,8 +1,24 @@
-# RelativePerformer
-Relative Encoding of `Performer` architecture. Parts of this code are based on
-the implementation available [here](https://github.com/lucidrains/performer-pytorch).
+# Translational Equivariance in Kernelizable Attention
+Code of the paper [Translational Equivariance in Kernelizable Attention](https://arxiv.org/abs/2102.07680).
+It contains two implementations of translational equivariance in the `Performer`
+kernelizable attention architecture. Parts of this code are based on the
+implementation of the Performer architecture by `lucidrains` available
+[here](https://github.com/lucidrains/performer-pytorch).
 Files which were taken from this repository retain the authors original
 copyright notice.
+
+## Citing our work
+Please use the following bibtex entry to cite our work:
+```bibtex
+@misc{horn2021translational,
+      title={{T}ranslational {E}quivariance in {K}ernelizable {A}ttention}, 
+      author={Max Horn and Kumar Shridhar and Elrich Groenewald and Philipp F. M. Baumann},
+      year={2021},
+      eprint={2102.07680},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG}
+}
+```
 
 ## Structure of the project, results and trained models
 Most of the code regarding the Performer model implementations can be found in
@@ -18,7 +34,7 @@ The code implements the following models:
  - `Performer`: Performer model with absolute positional encodings and without
    any further modifications
  - `NoPosPerformer`: Performer model without any positional encodings.
- [-](-.md) `RelativePerformer`: Adapted Performer model using constrained weight
+ - `RelativePerformer`: Adapted Performer model using constrained weight
    matrices for projection of positional embeddings (corresponding to *strategy
    1 of the paper*)
  - `ClippedRelativePerformer`: Adapted Performer model which directly learns
