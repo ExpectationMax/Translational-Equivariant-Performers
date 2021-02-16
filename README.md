@@ -1,11 +1,15 @@
 # Translational Equivariance in Kernelizable Attention
-Code of the paper [Translational Equivariance in Kernelizable Attention](https://arxiv.org/abs/2102.07680).
-It contains two implementations of translational equivariance in the [Performer](https://openreview.net/forum?id=Ua6zuk0WRH)
-kernelizable attention architecture. Parts of this code are based on the
-implementation of the Performer architecture by [Phil Wang](https://github.com/lucidrains) available
-[here](https://github.com/lucidrains/performer-pytorch).
-Files which were taken from this repository retain the authors original
-copyright notice.
+
+![Robustness to perturbation](./results/shift_figure.png)
+
+Code of the paper [Translational Equivariance in Kernelizable
+Attention](https://arxiv.org/abs/2102.07680).  It contains two implementations
+of translational equivariance in the
+[Performer](https://openreview.net/forum?id=Ua6zuk0WRH) kernelizable attention
+architecture. Parts of this code are based on the implementation of the
+Performer architecture by [Phil Wang](https://github.com/lucidrains) available
+[here](https://github.com/lucidrains/performer-pytorch).  Files which were
+taken from this repository retain the authors original copyright notice.
 
 ## Citing our work
 Please use the following bibtex entry to cite our work:
